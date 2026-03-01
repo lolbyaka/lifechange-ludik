@@ -1,0 +1,84 @@
+// Prisma schema for MongoDB
+// Set DATABASE_URL in .env, e.g.:
+//   mongodb+srv://user:password@cluster.mongodb.net/mydb
+//   mongodb://localhost:27017/mydb
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum ExchangeType {
+  binance
+  bybit
+  okx
+  backpack
+  kraken
+  hyperliquid
+  aster
+}
+
+model Exchange {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  name           String?      // display name; when null, use type (e.g. for existing records)
+  apiKey         String
+  secretKey      String
+  passphrase     String?
+  walletAddress  String?      // required for some DEXs (e.g. Hyperliquid: EVM wallet address)
+  type           ExchangeType
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  tradeBots      TradeBot[]
+}
+
+enum TradeBotType {
+  ROBO_FIBO
+}
+
+enum TradeBotDirection {
+  LONG
+  SHORT
+  BOTH
+}
+
+model TradeBot {
+  id         String            @id @default(auto()) @map("_id") @db.ObjectId
+  exchangeId String            @db.ObjectId
+  exchange   Exchange          @relation(fields: [exchangeId], references: [id])
+  type       TradeBotType
+  direction  TradeBotDirection
+  ticker     String
+  amount     String            // USD amount allowed to trade
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+}
+
+model Signal {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  strategy           String
+  symbol             String
+  slROI              String
+  tpROI              String
+  longMALine         String?
+  crossMASignalDown  String?
+  momentumLine       String?
+  MALine             String?
+  positionSize       String
+  leverage           String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Webhook {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  payload   String   // full incoming webhook body as JSON string
+  symbol    String?  // extracted for filtering (ticker)
+  strategy  String?  // extracted for filtering
+  direction String?  // extracted for filtering (e.g. LONG, SHORT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/api/client.ts","./src/api/exchanges.ts","./src/components/exchangedetail.tsx","./src/components/exchangeform.tsx","./src/components/exchanges.tsx","./src/hooks/useexchanges.ts","./src/types/exchange.ts"],"version":"5.6.3"}
