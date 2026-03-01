@@ -5,6 +5,8 @@ import { Webhooks } from './components/Webhooks';
 import { WebhookDetail } from './components/WebhookDetail';
 import { Signals } from './components/Signals';
 import { SignalDetail } from './components/SignalDetail';
+import { Bots } from './components/Bots';
+import { BotDetail } from './components/BotDetail';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -33,11 +35,11 @@ function App() {
                 <NavLink to="/signals" className={navLinkClass}>
                   Signals
                 </NavLink>
+                <NavLink to="/bots" className={navLinkClass}>
+                  Bots
+                </NavLink>
               </nav>
             </div>
-            <p className="mt-0.5 text-sm text-slate-400">
-              Exchange connections & webhook receiver
-            </p>
           </div>
         </header>
         <main className="mx-auto max-w-4xl px-4 py-8">
@@ -48,6 +50,8 @@ function App() {
             <Route path="/webhooks/:id" element={<WebhookDetail />} />
             <Route path="/signals" element={<Signals />} />
             <Route path="/signals/:id" element={<SignalDetail />} />
+            <Route path="/bots" element={<Bots />} />
+            <Route path="/bots/:id" element={<BotDetail />} />
           </Routes>
         </main>
       </div>

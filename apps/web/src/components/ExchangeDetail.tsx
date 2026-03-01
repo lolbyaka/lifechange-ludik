@@ -96,7 +96,15 @@ export function ExchangeDetail() {
       </div>
 
       <section>
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-slate-500">Balance</h3>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-medium uppercase tracking-wider text-slate-500">Balance</h3>
+          <Link
+            to={`/bots?exchangeId=${encodeURIComponent(id!)}`}
+            className="text-sm text-emerald-400 hover:underline"
+          >
+            View bots →
+          </Link>
+        </div>
         {balanceLoading && (
           <div className="flex items-center gap-2 py-4 text-slate-400">
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-slate-200" />

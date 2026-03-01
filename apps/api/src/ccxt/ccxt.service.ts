@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExchangeType } from '@prisma/client';
 
@@ -23,6 +29,11 @@ type CcxtExchange = {
   close(): Promise<void>;
 };
 
+interface CachedExchange {
+  client: CcxtExchange;
+  markets: unknown[];
+}
+
 /** Maps our Prisma ExchangeType to CCXT exchange id (they match for supported exchanges). */
 const EXCHANGE_TYPE_TO_CCXT_ID: Record<ExchangeType, string> = {
   [ExchangeType.binance]: 'binance',
@@ -34,9 +45,70 @@ const EXCHANGE_TYPE_TO_CCXT_ID: Record<ExchangeType, string> = {
   [ExchangeType.aster]: 'aster',
 };
 
+/** Force futures/perp market type for order and market resolution (not spot). */
+const EXCHANGE_DEFAULT_TYPE_FUTURES: Partial<Record<ExchangeType, string>> = {
+  [ExchangeType.binance]: 'future',
+  [ExchangeType.bybit]: 'future',
+  [ExchangeType.okx]: 'swap',
+  [ExchangeType.backpack]: 'swap',
+  [ExchangeType.kraken]: 'future',
+  [ExchangeType.hyperliquid]: 'swap',
+  [ExchangeType.aster]: 'swap',
+};
+
 @Injectable()
-export class CcxtService {
+export class CcxtService implements OnModuleInit, OnModuleDestroy {
+  private readonly cache = new Map<string, CachedExchange>();
+  private readonly exchangeLocks = new Map<string, Promise<unknown>>();
+
   constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit(): Promise<void> {
+    const exchangesWithBots = await this.prisma.exchange.findMany({
+      where: { tradeBots: { some: {} } },
+      select: { id: true },
+    });
+    for (const { id } of exchangesWithBots) {
+      try {
+        await this.getOrCreateClient(id);
+        await this.getCachedMarkets(id);
+      } catch (err) {
+        console.error(
+          `[CcxtService] Preload failed for exchange ${id}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    for (const entry of this.cache.values()) {
+      if (typeof entry.client.close === 'function') {
+        await entry.client.close().catch(() => {});
+      }
+    }
+    this.cache.clear();
+    this.exchangeLocks.clear();
+  }
+
+  /**
+   * Remove cached client and markets for an exchange (e.g. after credentials update).
+   * Next request will create a new client.
+   */
+  invalidate(exchangeId: string): void {
+    const entry = this.cache.get(exchangeId);
+    if (entry && typeof entry.client.close === 'function') {
+      entry.client.close().catch(() => {});
+    }
+    this.cache.delete(exchangeId);
+  }
+
+  private withExchangeLock<T>(exchangeId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.exchangeLocks.get(exchangeId) ?? Promise.resolve();
+    const current = prev.then(() => fn(), () => fn());
+    this.exchangeLocks.set(exchangeId, current);
+    return current as Promise<T>;
+  }
 
   /**
    * Returns a configured CCXT exchange instance for the given exchange id (our DB id).
@@ -44,6 +116,10 @@ export class CcxtService {
    * For one-off REST calls we create and close inside each method.
    */
   async getClient(exchangeId: string): Promise<CcxtExchange> {
+    return this.createClient(exchangeId);
+  }
+
+  private async createClient(exchangeId: string): Promise<CcxtExchange> {
     const exchange = await this.prisma.exchange.findUnique({
       where: { id: exchangeId },
     });
@@ -70,28 +146,66 @@ export class CcxtService {
       );
     }
 
+    const defaultType = EXCHANGE_DEFAULT_TYPE_FUTURES[exchange.type];
+    const normalizeCred = (v: string) => v.trim().replace(/\r\n|\n|\r/g, '');
+    const secret = typeof exchange.secretKey === 'string' ? normalizeCred(exchange.secretKey) : exchange.secretKey;
     const options: Record<string, unknown> = {
-      apiKey: exchange.apiKey,
-      secret: exchange.secretKey,
-      password: exchange.passphrase ?? undefined,
+      apiKey:
+        typeof exchange.apiKey === 'string'
+          ? normalizeCred(exchange.apiKey)
+          : exchange.apiKey,
+      secret,
+      ...(exchange.passphrase ? { password: normalizeCred(String(exchange.passphrase)) } : {}),
       enableRateLimit: true,
+      ...(defaultType ? { defaultType } : {}),
     };
     if (exchange.walletAddress?.trim()) {
       options.walletAddress = exchange.walletAddress.trim();
+    }
+    if (exchange.type === ExchangeType.hyperliquid) {
+      options.privateKey = secret;
+    }
+    if (exchange.type === ExchangeType.backpack) {
+      options.recvWindow = 60000;
+      options['X-Window'] = 60000;
     }
     const client = new ExchangeClass(options) as CcxtExchange;
 
     return client;
   }
 
+  private async getOrCreateClient(exchangeId: string): Promise<CcxtExchange> {
+    const entry = this.cache.get(exchangeId);
+    if (entry) {
+      return entry.client;
+    }
+    const client = await this.createClient(exchangeId);
+    this.cache.set(exchangeId, { client, markets: [] });
+    return client;
+  }
+
+  private async getCachedMarkets(exchangeId: string, params?: object): Promise<unknown[]> {
+    const entry = this.cache.get(exchangeId);
+    if (!entry) {
+      throw new Error('Exchange not in cache');
+    }
+    if (entry.markets.length > 0) {
+      return entry.markets;
+    }
+    const markets = await entry.client.fetchMarkets(params);
+    entry.markets = Array.isArray(markets) ? markets : [];
+    return entry.markets;
+  }
+
   /**
    * Runs an operation with a short-lived CCXT client. Ensures client is not kept in memory.
+   * Used for exchangeIds not in the pool (e.g. no bots, or after invalidate).
    */
   private async withClient<T>(
     exchangeId: string,
     fn: (client: CcxtExchange) => Promise<T>,
   ): Promise<T> {
-    const client = await this.getClient(exchangeId);
+    const client = await this.createClient(exchangeId);
     try {
       return await fn(client);
     } finally {
@@ -101,8 +215,22 @@ export class CcxtService {
     }
   }
 
+  private async withPooledOrOneOff<T>(
+    exchangeId: string,
+    fn: (client: CcxtExchange) => Promise<T>,
+  ): Promise<T> {
+    if (this.cache.has(exchangeId)) {
+      return this.withExchangeLock(exchangeId, async () => {
+        const entry = this.cache.get(exchangeId);
+        if (!entry) return fn(await this.createClient(exchangeId));
+        return fn(entry.client);
+      });
+    }
+    return this.withClient(exchangeId, fn);
+  }
+
   async fetchBalance(exchangeId: string, params?: object): Promise<Record<string, unknown>> {
-    return this.withClient(exchangeId, (client) => client.fetchBalance(params));
+    return this.withPooledOrOneOff(exchangeId, (client) => client.fetchBalance(params));
   }
 
   async fetchPositions(
@@ -110,7 +238,7 @@ export class CcxtService {
     symbols?: string[],
     params?: object,
   ): Promise<unknown[]> {
-    return this.withClient(exchangeId, (client) =>
+    return this.withPooledOrOneOff(exchangeId, (client) =>
       client.fetchPositions(symbols, params),
     );
   }
@@ -120,7 +248,7 @@ export class CcxtService {
     symbol: string,
     params?: object,
   ): Promise<unknown> {
-    return this.withClient(exchangeId, (client) =>
+    return this.withPooledOrOneOff(exchangeId, (client) =>
       client.fetchTicker(symbol, params),
     );
   }
@@ -130,13 +258,16 @@ export class CcxtService {
     symbols?: string[],
     params?: object,
   ): Promise<Record<string, unknown>> {
-    return this.withClient(exchangeId, (client) =>
+    return this.withPooledOrOneOff(exchangeId, (client) =>
       client.fetchTickers(symbols, params),
     );
   }
 
   async fetchMarkets(exchangeId: string, params?: object): Promise<unknown[]> {
-    return this.withClient(exchangeId, (client) => client.fetchMarkets(params));
+    return this.withExchangeLock(exchangeId, async () => {
+      await this.getOrCreateClient(exchangeId);
+      return this.getCachedMarkets(exchangeId, params);
+    });
   }
 
   async fetchOpenOrders(
@@ -146,7 +277,7 @@ export class CcxtService {
     limit?: number,
     params?: object,
   ): Promise<unknown[]> {
-    return this.withClient(exchangeId, (client) =>
+    return this.withPooledOrOneOff(exchangeId, (client) =>
       client.fetchOpenOrders(symbol, since, limit, params),
     );
   }
@@ -158,7 +289,7 @@ export class CcxtService {
     limit?: number,
     params?: object,
   ): Promise<unknown[]> {
-    return this.withClient(exchangeId, (client) =>
+    return this.withPooledOrOneOff(exchangeId, (client) =>
       client.fetchClosedOrders(symbol, since, limit, params),
     );
   }
@@ -172,7 +303,7 @@ export class CcxtService {
     price?: number,
     params?: object,
   ): Promise<unknown> {
-    return this.withClient(exchangeId, (client) =>
+    return this.withPooledOrOneOff(exchangeId, (client) =>
       client.createOrder(symbol, type, side, amount, price, params),
     );
   }
@@ -183,7 +314,7 @@ export class CcxtService {
     symbol?: string,
     params?: object,
   ): Promise<unknown> {
-    return this.withClient(exchangeId, (client) =>
+    return this.withPooledOrOneOff(exchangeId, (client) =>
       client.cancelOrder(orderId, symbol, params),
     );
   }

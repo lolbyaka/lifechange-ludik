@@ -4,6 +4,7 @@ import { UpdateWebhookDto } from './dto/update-webhook.dto';
 import { Webhook } from '@prisma/client';
 import { extractWebhookFilters } from './utils/extract-webhook-filters';
 import { webhookPayloadToSignalData } from './utils/webhook-payload-to-signal';
+import { ExchangeBotService } from '../bots/exchange-bot.service';
 
 export interface WebhookListFilters {
   symbol?: string;
@@ -13,7 +14,10 @@ export interface WebhookListFilters {
 
 @Injectable()
 export class WebhooksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly exchangeBotService: ExchangeBotService,
+  ) {}
 
   private buildWhere(filters: WebhookListFilters) {
     const where: { symbol?: string; strategy?: string; direction?: string } = {};
@@ -29,24 +33,32 @@ export class WebhooksService {
     const webhook = await this.prisma.webhook.create({
       data: { payload: payloadStr, symbol, strategy, direction },
     });
-    // Side effect: create Signal from same payload
+    // Side effect: create Signal from same payload, then try to open positions for matching bots
     const signalData = webhookPayloadToSignalData(payload);
+    console.log('create', signalData);
     if (signalData) {
       try {
-        await this.prisma.signal.create({
+        const signal = await this.prisma.signal.create({
           data: {
             strategy: signalData.strategy,
             symbol: signalData.symbol,
+            direction: signalData.direction,
             slROI: signalData.slROI,
             tpROI: signalData.tpROI,
             positionSize: signalData.positionSize,
             leverage: signalData.leverage,
             longMALine: signalData.longMALine,
             crossMASignalDown: signalData.crossMASignalDown,
+            crossMASignalUp: signalData.crossMASignalUp,
             momentumLine: signalData.momentumLine,
             MALine: signalData.MALine,
           },
         });
+        this.exchangeBotService
+          .tryOpenPositionsForSignal(signal)
+          .catch((err) =>
+            console.error('ExchangeBot tryOpenPositionsForSignal failed:', err),
+          );
       } catch (err) {
         console.error('Failed to create signal from webhook:', err);
       }

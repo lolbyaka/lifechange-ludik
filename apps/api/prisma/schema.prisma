@@ -35,10 +35,6 @@ model Exchange {
   tradeBots      TradeBot[]
 }
 
-enum TradeBotType {
-  ROBO_FIBO
-}
-
 enum TradeBotDirection {
   LONG
   SHORT
@@ -49,22 +45,49 @@ model TradeBot {
   id         String            @id @default(auto()) @map("_id") @db.ObjectId
   exchangeId String            @db.ObjectId
   exchange   Exchange          @relation(fields: [exchangeId], references: [id])
-  type       TradeBotType
+  strategy   String            // webhook strategy name, e.g. DIY, Momentum
   direction  TradeBotDirection
   ticker     String
   amount     String            // USD amount allowed to trade
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
+  positions  Position[]
+}
+
+enum PositionStatus {
+  OPEN
+  CLOSED
+}
+
+model Position {
+  id               String         @id @default(auto()) @map("_id") @db.ObjectId
+  botId             String         @db.ObjectId
+  bot               TradeBot      @relation(fields: [botId], references: [id])
+  signalId          String?        @db.ObjectId
+  exchangeId        String         @db.ObjectId
+  symbol            String
+  side              String         // LONG or SHORT
+  quantity          String
+  entryPrice        String
+  status            PositionStatus @default(OPEN)
+  externalOrderId   String?
+  tpOrderId         String?
+  slOrderId         String?
+  closedAt          DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 }
 
 model Signal {
   id                 String   @id @default(auto()) @map("_id") @db.ObjectId
   strategy           String
   symbol             String
+  direction          String?  // LONG or SHORT, from payload or derived from MA/momentum
   slROI              String
   tpROI              String
   longMALine         String?
   crossMASignalDown  String?
+  crossMASignalUp    String?
   momentumLine       String?
   MALine             String?
   positionSize       String
