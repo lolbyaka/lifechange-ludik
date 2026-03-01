@@ -1,0 +1,21 @@
+{
+  "name": "lifechange-ludik",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Lifechange Ludik monorepo",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "build:api": "pnpm --filter api run build",
+    "dev": "pnpm --filter api run start:dev",
+    "start:api": "pnpm --filter api run start",
+    "start:api:prod": "pnpm --filter api run start:prod",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test",
+    "test:e2e": "pnpm --filter api run test:e2e",
+    "format": "prettier --write \"**/*.{ts,js,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2"
+  },
+  "packageManager": "pnpm@10.0.0"
+}
