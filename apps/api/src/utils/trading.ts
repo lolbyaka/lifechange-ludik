@@ -89,10 +89,8 @@ export function findExistingPosition(
   const found = positions.find((p) => {
     const pos = p as Record<string, unknown>;
     const posSymbol = (pos.market ?? pos.symbol) as string;
-    const netQ = parseFloat(
-      String(pos.netQuantity ?? pos.netExposureQuantity ?? 0),
-    );
-    return posSymbol === symbol && Math.abs(netQ) > 0;
+
+    return posSymbol === symbol;
   });
   return (found as Record<string, unknown>) ?? null;
 }

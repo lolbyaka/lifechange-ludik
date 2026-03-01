@@ -25,8 +25,8 @@ export class WebhooksController {
   @Post()
   async receive(@Body() body: unknown) {
     const alertData = parseWebhookBody(body);
-    const webhook = await this.webhooksService.create(alertData);
-    return { id: webhook.id, received: true };
+    await this.webhooksService.create(alertData);
+    return { received: true };
   }
 
   @Get()

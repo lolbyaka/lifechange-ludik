@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CcxtService } from '../ccxt/ccxt.service';
 import { Signal, TradeBot } from '@prisma/client';
@@ -14,6 +14,8 @@ import {
 
 @Injectable()
 export class ExchangeBotService {
+  private readonly logger = new Logger(ExchangeBotService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ccxt: CcxtService,
@@ -23,7 +25,7 @@ export class ExchangeBotService {
    * Called after a new signal is created. Finds matching bots and tries to open positions.
    * Run asynchronously so webhook response is not blocked.
    */
-  async tryOpenPositionsForSignal(signal: Signal): Promise<void> {
+  async tryOpenPositionsForSignal(signal: Omit<Signal, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
     const direction = signal.direction?.trim().toUpperCase();
     if (direction !== 'LONG' && direction !== 'SHORT') {
       return;
@@ -44,10 +46,7 @@ export class ExchangeBotService {
     await Promise.allSettled(
       bots.map((bot) =>
         this.openPositionForBot(bot, signal).catch((err) => {
-          console.error(
-            `[ExchangeBot] Failed to open position for bot ${bot.id}:`,
-            err instanceof Error ? err.message : err,
-          );
+          this.logger.error(`Failed to open position for bot ${bot.id}:`, err instanceof Error ? err.message : err);
         }),
       ),
     );
@@ -96,23 +95,11 @@ export class ExchangeBotService {
 
   async openPositionForBot(
     bot: TradeBot & { exchange?: unknown },
-    signal: Signal,
+    signal: Omit<Signal, 'id' | 'createdAt' | 'updatedAt'>,
   ): Promise<void> {
     const direction = signal.direction!.trim().toUpperCase() as 'LONG' | 'SHORT';
     const symbol = signal.symbol;
     const exchangeId = bot.exchangeId;
-
-    const existingDb = await this.prisma.position.findFirst({
-      where: {
-        botId: bot.id,
-        symbol,
-        status: PositionStatus.OPEN,
-        side: direction,
-      },
-    });
-    if (existingDb) {
-      return;
-    }
 
     let markets: Array<{
       symbol?: string;
@@ -124,18 +111,44 @@ export class ExchangeBotService {
       limits?: { amount?: { min?: number } };
     }> = [];
     try {
+      const now = Date.now();
       markets = (await this.ccxt.fetchMarkets(exchangeId)) as typeof markets;
+
+      const end = Date.now();
+      this.logger.log(`[ExchangeBot] ${exchangeId} Fetched markets in ${end - now}ms`);
     } catch (e) {
-      console.error('[ExchangeBot] Failed to fetch markets:', e);
+      this.logger.error('[ExchangeBot] Failed to fetch markets:', e);
       return;
     }
 
     const exchangeSymbol = this.resolveSymbol(markets, symbol);
     if (!exchangeSymbol) {
-      console.error(
+      this.logger.error(
         `[ExchangeBot] Exchange has no market for symbol "${symbol}". Use exchange symbol (e.g. ETH/USDT:US).`,
       );
       return;
+    }
+
+    // Skip if exchange already has an open position for this symbol and side
+    let positions: unknown[] = [];
+    let existingOnExchange: Record<string, unknown> | null = null;
+    try {
+      const now = Date.now();
+      positions = await this.ccxt.fetchPositions(exchangeId, [exchangeSymbol]);
+      const end = Date.now();
+      this.logger.log(`[ExchangeBot] ${exchangeId} Fetched positions in ${end - now}ms`);
+      existingOnExchange = findExistingPosition(
+        positions,
+        exchangeSymbol,
+      );
+      if (existingOnExchange && getPositionSide(existingOnExchange) === direction) {
+        return;
+      }
+    } catch (e) {
+      this.logger.warn(
+        `[ExchangeBot] Failed to fetch positions for ${exchangeSymbol}, continuing:`,
+        e instanceof Error ? e.message : String(e),
+      );
     }
 
     let entryPrice: number;
@@ -143,18 +156,21 @@ export class ExchangeBotService {
     let tickSize: string | null = null;
 
     try {
+      const now = Date.now();
       const ticker = (await this.ccxt.fetchTicker(exchangeId, exchangeSymbol)) as Record<
         string,
         unknown
       >;
+      const end = Date.now();
+      this.logger.log(`[ExchangeBot] ${exchangeId} Fetched ticker in ${end - now}ms`);
       const last = ticker.last ?? ticker.lastPrice ?? ticker.close ?? ticker.price;
       entryPrice = parseFloat(String(last));
       if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
-        console.error('[ExchangeBot] Invalid ticker price:', ticker);
+        this.logger.error('[ExchangeBot] Invalid ticker price:', ticker);
         return;
       }
     } catch (e) {
-      console.error('[ExchangeBot] Failed to fetch ticker:', e);
+      this.logger.error('[ExchangeBot] Failed to fetch ticker:', e);
       return;
     }
 
@@ -193,7 +209,7 @@ export class ExchangeBotService {
       if (Number.isFinite(amountUsd) && amountUsd > 0 && entryPrice > 0) {
         quantity = amountUsd / entryPrice;
       } else {
-        console.error('[ExchangeBot] No valid positionSize or bot amount');
+        this.logger.error('[ExchangeBot] No valid positionSize or bot amount');
         return;
       }
     }
@@ -211,27 +227,21 @@ export class ExchangeBotService {
     if (roundedQuantity <= 0) {
       // Do not substitute stepSize when user requested a smaller size (e.g. positionSize 0.026) — would oversize the order.
       if (quantity > 0) {
-        console.error(
+        this.logger.error(
           '[ExchangeBot] Position size rounds to zero (below exchange step/min). Use a larger positionSize or check exchange limits. ' +
             `quantity=${quantity} stepSize=${stepSize ?? 'n/a'} minAmount=${minAmount ?? 'n/a'} symbol=${exchangeSymbol}`,
         );
         return;
       }
-      console.error(
+      this.logger.error(
         '[ExchangeBot] Rounded quantity <= 0. Increase positionSize or bot amount. ' +
           `quantity=${quantity} stepSize=${stepSize ?? 'n/a'} minAmount=${minAmount ?? 'n/a'} entryPrice=${entryPrice} symbol=${exchangeSymbol}`,
       );
       return;
     }
 
-    const positions = await this.ccxt.fetchPositions(exchangeId, [exchangeSymbol]);
-    const existingPosition = findExistingPosition(
-      positions as unknown[],
-      exchangeSymbol,
-    );
-
-    if (existingPosition) {
-      const existingSide = getPositionSide(existingPosition);
+    if (existingOnExchange) {
+      const existingSide = getPositionSide(existingOnExchange);
       if (existingSide === direction) {
         return;
       }
@@ -240,8 +250,8 @@ export class ExchangeBotService {
         const closeSize = Math.abs(
           parseFloat(
             String(
-              existingPosition.netQuantity ??
-                existingPosition.netExposureQuantity ??
+              existingOnExchange.netQuantity ??
+                existingOnExchange.netExposureQuantity ??
                 0,
             ),
           ),
@@ -309,6 +319,7 @@ export class ExchangeBotService {
     const triggerSide = direction === 'LONG' ? 'sell' : 'buy';
     let orderResult: Record<string, unknown> | undefined;
     try {
+      const now = Date.now();
       orderResult = (await this.ccxt.createOrder(
         exchangeId,
         exchangeSymbol,
@@ -318,22 +329,17 @@ export class ExchangeBotService {
         entryPrice,
         Object.keys(orderParams).length > 0 ? orderParams : undefined,
       )) as Record<string, unknown>;
+      const end = Date.now();
+      this.logger.log(`[ExchangeBot] ${exchangeId} Created order in ${end - now}ms`);
     } catch (orderErr) {
-      const msg = orderErr instanceof Error ? orderErr.message : String(orderErr);
-      console.error('[ExchangeBot] Failed to place order:', orderErr);
-      if (/Invalid signature|INVALID_CLIENT_REQUEST/i.test(msg)) {
-        console.error(
-          '[ExchangeBot] Backpack auth failed: use the ED25519 key pair from Backpack (Settings → API). ' +
-            'Create new keys there, copy API Key and Secret as single-line base64 (no spaces/newlines). ' +
-            'See https://support.backpack.exchange/exchange/api-and-developer-docs/generate-api-keys-for-backpack-exchange',
-        );
-      }
+      this.logger.error('[ExchangeBot] Failed to place order:', orderErr);
       return;
     }
 
     // Hyperliquid: place TP and SL as separate trigger orders (batch TP/SL is not applied).
     if (isHyperliquid && hasTpSl && tpTriggerPrice != null && slTriggerPrice != null) {
       try {
+        const now = Date.now();
         await this.ccxt.createOrder(
           exchangeId,
           exchangeSymbol,
@@ -343,10 +349,13 @@ export class ExchangeBotService {
           tpTriggerPrice,
           { takeProfitPrice: tpTriggerPrice, reduceOnly: true },
         );
+        const end = Date.now();
+        this.logger.log(`[ExchangeBot] ${exchangeId} Created TP order in ${end - now}ms`);
       } catch (tpErr) {
-        console.error('[ExchangeBot] Hyperliquid TP order failed:', tpErr);
+        this.logger.error('[ExchangeBot] Hyperliquid TP order failed:', tpErr);
       }
       try {
+        const now = Date.now();
         await this.ccxt.createOrder(
           exchangeId,
           exchangeSymbol,
@@ -356,30 +365,32 @@ export class ExchangeBotService {
           slTriggerPrice,
           { stopLossPrice: slTriggerPrice, reduceOnly: true },
         );
+        const end = Date.now();
+        this.logger.log(`[ExchangeBot] ${exchangeId} Created SL order in ${end - now}ms`);
       } catch (slErr) {
-        console.error('[ExchangeBot] Hyperliquid SL order failed:', slErr);
+        this.logger.error('[ExchangeBot] Hyperliquid SL order failed:', slErr);
       }
     }
 
-    const externalOrderId = orderResult?.id != null ? String(orderResult.id) : undefined;
-    // Persist position in DB asynchronously so we don't block on DB before returning
-    this.prisma.position
-      .create({
-        data: {
-          botId: bot.id,
-          signalId: signal.id,
-          exchangeId,
-          symbol,
-          side: direction,
-          quantity: String(roundedQuantity),
-          entryPrice: String(entryPrice),
-          status: PositionStatus.OPEN,
-          externalOrderId,
-        },
-      })
-      .catch((err) =>
-        console.error('[ExchangeBot] Failed to persist position to DB:', err),
-      );
+    // const externalOrderId = orderResult?.id != null ? String(orderResult.id) : undefined;
+    // // Persist position in DB asynchronously so we don't block on DB before returning
+    // this.prisma.position
+    //   .create({
+    //     data: {
+    //       botId: bot.id,
+    //       signalId: 'signal.id',
+    //       exchangeId,
+    //       symbol,
+    //       side: direction,
+    //       quantity: String(roundedQuantity),
+    //       entryPrice: String(entryPrice),
+    //       status: PositionStatus.OPEN,
+    //       externalOrderId,
+    //     },
+    //   })
+    //   .catch((err) =>
+    //     console.error('[ExchangeBot] Failed to persist position to DB:', err),
+    //   );
   }
 
   private async cancelOpenOrdersForSymbol(

@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateWebhookDto } from './dto/update-webhook.dto';
-import { Webhook } from '@prisma/client';
+import { Signal, Webhook } from '@prisma/client';
 import { extractWebhookFilters } from './utils/extract-webhook-filters';
 import { webhookPayloadToSignalData } from './utils/webhook-payload-to-signal';
 import { ExchangeBotService } from '../bots/exchange-bot.service';
@@ -14,6 +14,8 @@ export interface WebhookListFilters {
 
 @Injectable()
 export class WebhooksService {
+  private readonly logger = new Logger(WebhooksService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly exchangeBotService: ExchangeBotService,
@@ -27,18 +29,28 @@ export class WebhooksService {
     return Object.keys(where).length ? where : undefined;
   }
 
-  async create(payload: Record<string, unknown>): Promise<Webhook> {
+  async create(payload: Record<string, unknown>): Promise<void> {
     const payloadStr = JSON.stringify(payload);
     const { symbol, strategy, direction } = extractWebhookFilters(payload);
-    const webhook = await this.prisma.webhook.create({
-      data: { payload: payloadStr, symbol, strategy, direction },
-    });
+    
     // Side effect: create Signal from same payload, then try to open positions for matching bots
     const signalData = webhookPayloadToSignalData(payload);
-    console.log('create', signalData);
+
+    this.logger.log('create', signalData);
+
     if (signalData) {
       try {
-        const signal = await this.prisma.signal.create({
+        this.exchangeBotService
+          .tryOpenPositionsForSignal(signalData)
+          .catch((err) => this.logger.error('ExchangeBot tryOpenPositionsForSignal failed:', err));
+
+        // Create signal in DB asynchronously so we don't block on DB before returning
+        this.prisma.webhook.create({
+          data: { payload: payloadStr, symbol, strategy, direction },
+        }).then((w) => {
+          this.logger.log('Webhook created:', w);
+        });
+        this.prisma.signal.create({
           data: {
             strategy: signalData.strategy,
             symbol: signalData.symbol,
@@ -53,17 +65,13 @@ export class WebhooksService {
             momentumLine: signalData.momentumLine,
             MALine: signalData.MALine,
           },
+        }).then((s) => {
+          this.logger.log('Signal created:', s);
         });
-        this.exchangeBotService
-          .tryOpenPositionsForSignal(signal)
-          .catch((err) =>
-            console.error('ExchangeBot tryOpenPositionsForSignal failed:', err),
-          );
       } catch (err) {
         console.error('Failed to create signal from webhook:', err);
       }
     }
-    return webhook;
   }
 
   async findAll(filters: WebhookListFilters = {}): Promise<Webhook[]> {
