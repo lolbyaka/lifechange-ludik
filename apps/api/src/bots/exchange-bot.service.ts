@@ -298,6 +298,7 @@ export class ExchangeBotService {
     }
 
     const isHyperliquid = exchangeType === 'hyperliquid';
+    const isAster = exchangeType === 'aster';
     const hasTpSl =
       tpTriggerPrice != null &&
       slTriggerPrice != null &&
@@ -310,7 +311,7 @@ export class ExchangeBotService {
     }
     // Backpack (and others that support it) accept TP/SL in the same createOrder call.
     // Hyperliquid does not apply TP/SL from the batch reliably, so we attach them in separate calls.
-    if (hasTpSl && !isHyperliquid) {
+    if (hasTpSl && !isHyperliquid && !isAster) {
       orderParams.takeProfit = { triggerPrice: tpTriggerPrice };
       orderParams.stopLoss = { triggerPrice: slTriggerPrice };
     }
@@ -336,8 +337,8 @@ export class ExchangeBotService {
       return;
     }
 
-    // Hyperliquid: place TP and SL as separate trigger orders (batch TP/SL is not applied).
-    if (isHyperliquid && hasTpSl && tpTriggerPrice != null && slTriggerPrice != null) {
+    // Hyperliquid & Aster: place TP and SL as separate trigger orders (batch TP/SL is not applied).
+    if ((isHyperliquid || isAster) && hasTpSl && tpTriggerPrice != null && slTriggerPrice != null) {
       try {
         const now = Date.now();
         await this.ccxt.createOrder(

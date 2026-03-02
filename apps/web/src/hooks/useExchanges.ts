@@ -34,6 +34,28 @@ export function useExchangeBalance(exchangeId: string | null) {
   });
 }
 
+export function useExchangeMarkets(exchangeId: string | null) {
+  return useQuery({
+    queryKey: [...QUERY_KEY, exchangeId, 'markets'],
+    queryFn: () =>
+      exchangeId
+        ? exchangesApi.getMarkets(exchangeId)
+        : Promise.reject(new Error('No exchange id')),
+    enabled: !!exchangeId,
+  });
+}
+
+export function useExchangeTickers(exchangeId: string | null) {
+  return useQuery({
+    queryKey: [...QUERY_KEY, exchangeId, 'tickers'],
+    queryFn: () =>
+      exchangeId
+        ? exchangesApi.getTickers(exchangeId)
+        : Promise.reject(new Error('No exchange id')),
+    enabled: !!exchangeId,
+  });
+}
+
 export function useCreateExchange() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -55,6 +77,24 @@ export function useDeleteExchange() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => exchangesApi.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
+  });
+}
+
+export function useLoadMarkets() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (exchangeId: string) => exchangesApi.loadMarkets(exchangeId),
+    onSuccess: (_, exchangeId) => {
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEY, exchangeId, 'markets'] });
+    },
+  });
+}
+
+export function useLoadAllMarkets() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => exchangesApi.loadAllMarkets(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
   });
 }

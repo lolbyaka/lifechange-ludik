@@ -30,6 +30,31 @@ export class ExchangesController {
     return this.exchangesService.findAll();
   }
 
+  /** Load markets for all exchanges (force refresh from each exchange). */
+  @Post('load-markets')
+  async loadAllMarkets() {
+    const exchanges = await this.exchangesService.findAll();
+    const results = await Promise.allSettled(
+      exchanges.map((ex) =>
+        this.ccxtService.refreshMarkets(ex.id).then((markets) => ({
+          exchangeId: ex.id,
+          name: ex.name ?? ex.type,
+          count: Array.isArray(markets) ? markets.length : 0,
+        })),
+      ),
+    );
+    return results.map((r, i) =>
+      r.status === 'fulfilled'
+        ? { ...r.value, success: true as const }
+        : {
+            exchangeId: exchanges[i].id,
+            name: exchanges[i].name ?? exchanges[i].type,
+            success: false as const,
+            error: (r as PromiseRejectedResult).reason?.message ?? String((r as PromiseRejectedResult).reason),
+          },
+    );
+  }
+
   // --- CCXT API (must be declared before :id so path segments like "balance" are not treated as id) ---
 
   @Get(':id/balance')
@@ -48,7 +73,13 @@ export class ExchangesController {
 
   @Get(':id/markets')
   getMarkets(@Param('id') id: string) {
-    return this.ccxtService.fetchMarkets(id);
+    return this.ccxtService.getMarketsWithMeta(id);
+  }
+
+  /** Force-load (refresh) markets from the exchange and cache them. */
+  @Post(':id/markets/load')
+  loadMarkets(@Param('id') id: string) {
+    return this.ccxtService.refreshMarkets(id);
   }
 
   @Get(':id/tickers')

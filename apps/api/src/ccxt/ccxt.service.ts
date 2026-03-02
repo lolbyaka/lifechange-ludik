@@ -32,6 +32,8 @@ type CcxtExchange = {
 interface CachedExchange {
   client: CcxtExchange;
   markets: unknown[];
+  /** Timestamp when markets were last fetched (ms). */
+  loadedAt?: number;
 }
 
 /** Maps our Prisma ExchangeType to CCXT exchange id (they match for supported exchanges). */
@@ -194,6 +196,7 @@ export class CcxtService implements OnModuleInit, OnModuleDestroy {
     }
     const markets = await entry.client.fetchMarkets(params);
     entry.markets = Array.isArray(markets) ? markets : [];
+    entry.loadedAt = Date.now();
     return entry.markets;
   }
 
@@ -268,6 +271,36 @@ export class CcxtService implements OnModuleInit, OnModuleDestroy {
       await this.getOrCreateClient(exchangeId);
       return this.getCachedMarkets(exchangeId, params);
     });
+  }
+
+  /**
+   * Force-refresh markets from the exchange and update in-memory cache.
+   * Use this to "load" markets (e.g. after adding an exchange or to get latest list).
+   */
+  async refreshMarkets(exchangeId: string, params?: object): Promise<unknown[]> {
+    return this.withExchangeLock(exchangeId, async () => {
+      await this.getOrCreateClient(exchangeId);
+      const entry = this.cache.get(exchangeId);
+      if (!entry) {
+        throw new Error('Exchange not in cache');
+      }
+      const markets = await entry.client.fetchMarkets(params);
+      entry.markets = Array.isArray(markets) ? markets : [];
+      entry.loadedAt = Date.now();
+      return entry.markets;
+    });
+  }
+
+  /**
+   * Returns markets plus when they were last loaded (for UI).
+   */
+  async getMarketsWithMeta(exchangeId: string): Promise<{ markets: unknown[]; loadedAt: number | null }> {
+    const markets = await this.fetchMarkets(exchangeId);
+    const entry = this.cache.get(exchangeId);
+    return {
+      markets: Array.isArray(markets) ? markets : [],
+      loadedAt: entry?.loadedAt ?? null,
+    };
   }
 
   async fetchOpenOrders(

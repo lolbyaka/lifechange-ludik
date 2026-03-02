@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useExchanges, useCreateExchange, useDeleteExchange } from '../hooks/useExchanges';
+import { useExchanges, useCreateExchange, useDeleteExchange, useLoadAllMarkets } from '../hooks/useExchanges';
 import type { CreateExchangeInput, Exchange } from '../types/exchange';
 import { ExchangeForm } from './ExchangeForm';
 
@@ -13,6 +13,7 @@ export function Exchanges() {
   const { data: exchanges, isLoading, error } = useExchanges();
   const createMutation = useCreateExchange();
   const deleteMutation = useDeleteExchange();
+  const loadAllMarketsMutation = useLoadAllMarkets();
   const [editing, setEditing] = useState<Exchange | null>(null);
   const [showForm, setShowForm] = useState(false);
 
@@ -46,16 +47,26 @@ export function Exchanges() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-medium text-slate-200">Exchanges</h2>
         {!showForm && !editing && (
-          <button
-            type="button"
-            onClick={() => setShowForm(true)}
-            className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
-          >
-            Add exchange
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => loadAllMarketsMutation.mutate()}
+              disabled={!exchanges?.length || loadAllMarketsMutation.isPending}
+              className="rounded-md border border-slate-600 bg-slate-800/80 px-3 py-1.5 text-sm font-medium text-slate-200 hover:bg-slate-700/80 disabled:opacity-50"
+            >
+              {loadAllMarketsMutation.isPending ? 'Loading all markets…' : 'Load all markets'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
+            >
+              Add exchange
+            </button>
+          </div>
         )}
       </div>
 
@@ -76,7 +87,30 @@ export function Exchanges() {
           No exchanges yet. Add one to get started.
         </div>
       ) : (
-        <ul className="space-y-3">
+        <>
+          {loadAllMarketsMutation.isSuccess && Array.isArray(loadAllMarketsMutation.data) && (
+            <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 px-4 py-2 text-sm text-slate-300">
+              Loaded markets: {loadAllMarketsMutation.data.filter((r) => r.success).length} succeeded,{' '}
+              {loadAllMarketsMutation.data.filter((r) => !r.success).length} failed.
+              {loadAllMarketsMutation.data.some((r) => !r.success) && (
+                <ul className="mt-1 list-inside list-disc text-amber-400">
+                  {loadAllMarketsMutation.data
+                    .filter((r) => !r.success)
+                    .map((r) => (
+                      <li key={r.exchangeId}>
+                        {r.name}: {r.error}
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {loadAllMarketsMutation.isError && (
+            <div className="rounded-lg border border-amber-900/50 bg-amber-950/30 px-4 py-2 text-sm text-amber-300">
+              Load all markets failed: {(loadAllMarketsMutation.error as Error).message}
+            </div>
+          )}
+          <ul className="space-y-3">
           {exchanges?.map((ex) => (
             <li
               key={ex.id}
@@ -118,7 +152,8 @@ export function Exchanges() {
               </div>
             </li>
           ))}
-        </ul>
+          </ul>
+        </>
       )}
     </div>
   );

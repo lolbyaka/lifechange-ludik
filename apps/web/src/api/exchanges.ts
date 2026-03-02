@@ -10,10 +10,60 @@ export interface ExchangeBalance {
   [key: string]: unknown;
 }
 
+/** Single exchange load result (success or error) */
+export interface LoadMarketsResult {
+  exchangeId: string;
+  name: string;
+  success: boolean;
+  count?: number;
+  error?: string;
+}
+
+/** GET /exchanges/:id/markets response */
+export interface ExchangeMarketsResponse {
+  markets: CcxtMarket[];
+  loadedAt: number | null;
+}
+
+/** CCXT market (common fields) */
+export interface CcxtMarket {
+  id?: string;
+  symbol?: string;
+  base?: string;
+  quote?: string;
+  type?: string;
+  active?: boolean;
+  [key: string]: unknown;
+}
+
+/** CCXT ticker (common fields) */
+export interface CcxtTicker {
+  symbol?: string;
+  last?: number;
+  change?: number;
+  percentage?: number;
+  baseVolume?: number;
+  quoteVolume?: number;
+  bid?: number;
+  ask?: number;
+  high?: number;
+  low?: number;
+  timestamp?: number;
+  [key: string]: unknown;
+}
+
 export const exchangesApi = {
   list: () => api.get<Exchange[]>('/exchanges'),
   get: (id: string) => api.get<Exchange>(`/exchanges/${id}`),
   getBalance: (id: string) => api.get<ExchangeBalance>(`/exchanges/${id}/balance`),
+  getMarkets: (id: string) => api.get<ExchangeMarketsResponse>(`/exchanges/${id}/markets`),
+  getTickers: (id: string) => api.get<Record<string, CcxtTicker>>(`/exchanges/${id}/tickers`),
+  /** Force-load markets from exchange (refresh cache). Returns markets array. */
+  loadMarkets: (id: string) =>
+    api.post<unknown[]>(`/exchanges/${id}/markets/load`, {}),
+  /** Load markets for all exchanges. Returns array of { exchangeId, name, success, count?, error? }. */
+  loadAllMarkets: () =>
+    api.post<LoadMarketsResult[]>('/exchanges/load-markets', {}),
   create: (data: CreateExchangeInput) => api.post<Exchange>('/exchanges', data),
   update: (id: string, data: UpdateExchangeInput) =>
     api.patch<Exchange>(`/exchanges/${id}`, data),
