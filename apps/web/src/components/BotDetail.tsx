@@ -1,6 +1,10 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useBot } from '../hooks/useBots';
 import type { Position } from '../types/bot';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Button } from './ui/button';
+import { Alert, AlertDescription } from './ui/alert';
+import { Badge } from './ui/badge';
 
 function formatDate(iso: string) {
   try {
@@ -13,14 +17,14 @@ function formatDate(iso: string) {
 function PositionsTable({ positions }: { positions: Position[] }) {
   if (positions.length === 0) {
     return (
-      <p className="text-slate-500 text-sm">No positions yet.</p>
+      <p className="text-sm text-muted-foreground">No positions yet.</p>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-700/50">
+    <div className="overflow-x-auto rounded-lg border border-border bg-card">
       <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-slate-700/50 bg-slate-800/50 text-slate-400">
+        <thead className="border-b border-border bg-muted text-muted-foreground">
           <tr>
             <th className="px-4 py-3 font-medium">Symbol</th>
             <th className="px-4 py-3 font-medium">Side</th>
@@ -30,35 +34,39 @@ function PositionsTable({ positions }: { positions: Position[] }) {
             <th className="px-4 py-3 font-medium">Opened</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-700/30">
+        <tbody className="divide-y divide-border/60">
           {positions.map((pos) => (
-            <tr key={pos.id} className="text-slate-200">
+            <tr key={pos.id} className="text-foreground">
               <td className="px-4 py-2.5 font-medium">{pos.symbol}</td>
               <td className="px-4 py-2.5">
-                <span
+                <Badge
+                  variant="outline"
                   className={
                     pos.side === 'LONG'
-                      ? 'text-emerald-400'
-                      : 'text-amber-400'
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
+                      : 'border-amber-500/40 bg-amber-500/10 text-amber-700'
                   }
                 >
                   {pos.side}
-                </span>
+                </Badge>
               </td>
               <td className="px-4 py-2.5 text-right tabular-nums">{pos.quantity}</td>
               <td className="px-4 py-2.5 text-right tabular-nums">{pos.entryPrice}</td>
               <td className="px-4 py-2.5">
-                <span
+                <Badge
+                  variant="outline"
                   className={
                     pos.status === 'OPEN'
-                      ? 'text-emerald-400'
-                      : 'text-slate-500'
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
+                      : 'border-border bg-muted text-muted-foreground'
                   }
                 >
                   {pos.status}
-                </span>
+                </Badge>
               </td>
-              <td className="px-4 py-2.5 text-slate-400">{formatDate(pos.createdAt)}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">
+                {formatDate(pos.createdAt)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -68,100 +76,118 @@ function PositionsTable({ positions }: { positions: Position[] }) {
 }
 
 export function BotDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { id, exchangeId: exchangeIdFromPath } = useParams<{ id: string; exchangeId?: string }>();
+  const [searchParams] = useSearchParams();
+  const exchangeIdFromQuery = searchParams.get('exchangeId');
   const { data: bot, isLoading, error } = useBot(id ?? null);
 
   if (isLoading || !id) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-slate-400">Loading…</span>
+        <span className="text-muted-foreground">Loading…</span>
       </div>
     );
   }
 
   if (error || !bot) {
+    const resolvedExchangeId = exchangeIdFromPath ?? exchangeIdFromQuery ?? null;
+    const errorBackTo = resolvedExchangeId ? `/exchanges/${resolvedExchangeId}` : '/';
+    const errorBackLabel = resolvedExchangeId ? '← Back to exchange' : '← Back to exchanges';
+
     return (
-      <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 text-red-300">
-        Failed to load bot: {(error as Error)?.message ?? 'Not found'}
+      <Alert variant="destructive">
+        <AlertDescription>
+          Failed to load bot: {(error as Error)?.message ?? 'Not found'}
+        </AlertDescription>
         <div className="mt-3">
-          <Link to="/bots" className="text-sm text-red-200 hover:underline">
-            ← Back to bots
-          </Link>
+          <Button asChild variant="outline" size="sm">
+            <Link to={errorBackTo}>{errorBackLabel}</Link>
+          </Button>
         </div>
-      </div>
+      </Alert>
     );
   }
 
   const exchangeName = bot.exchange?.name ?? bot.exchange?.type ?? 'Exchange';
   const positions = bot.positions ?? [];
+  const preferredExchangeId = exchangeIdFromPath ?? exchangeIdFromQuery ?? bot.exchangeId ?? null;
+  const backTo = preferredExchangeId ? `/exchanges/${preferredExchangeId}` : '/';
+  const backLabel = preferredExchangeId ? '← Back to exchange' : '← Back to exchanges';
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link
-          to="/bots"
-          className="rounded p-1.5 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
-          aria-label="Back to bots"
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          aria-label="Back"
         >
-          <svg
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-        </Link>
-        <h2 className="text-lg font-medium text-slate-200">
+          <Link to={backTo}>
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+          </Link>
+        </Button>
+        <h2 className="text-lg font-semibold tracking-tight">
           {bot.strategy} · {bot.ticker} · {bot.direction}
         </h2>
       </div>
 
-      <section className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-4">
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-slate-500">
-          Bot config
-        </h3>
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-slate-500">Exchange</dt>
-            <dd className="font-medium text-slate-200">
-              <Link
-                to={`/exchanges/${bot.exchangeId}`}
-                className="text-emerald-400 hover:underline"
-              >
-                {exchangeName}
-              </Link>
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Strategy</dt>
-            <dd className="font-medium text-slate-200">{bot.strategy}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Direction</dt>
-            <dd className="font-medium text-slate-200">{bot.direction}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Ticker</dt>
-            <dd className="font-medium text-slate-200">{bot.ticker}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Amount (USD)</dt>
-            <dd className="font-medium text-slate-200">{bot.amount}</dd>
-          </div>
-        </dl>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Bot config
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-sm text-muted-foreground">Exchange</dt>
+              <dd className="font-medium text-foreground">
+                <Link
+                  to={`/exchanges/${bot.exchangeId}`}
+                  className="text-primary hover:underline"
+                >
+                  {exchangeName}
+                </Link>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">Strategy</dt>
+              <dd className="font-medium text-foreground">{bot.strategy}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">Direction</dt>
+              <dd className="font-medium text-foreground">{bot.direction}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">Ticker</dt>
+              <dd className="font-medium text-foreground">{bot.ticker}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">Amount (USD)</dt>
+              <dd className="font-medium text-foreground">{bot.amount}</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
 
-      <section>
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-slate-500">
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Positions
         </h3>
-        <p className="mb-3 text-sm text-slate-400">
+        <p className="text-sm text-muted-foreground">
           Positions opened by this bot when matching signals arrive.
         </p>
         <PositionsTable positions={positions} />

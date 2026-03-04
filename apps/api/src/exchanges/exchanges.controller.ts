@@ -12,12 +12,14 @@ import { ExchangesService } from './exchanges.service';
 import { CcxtService } from '../ccxt/ccxt.service';
 import { CreateExchangeDto } from './dto/create-exchange.dto';
 import { UpdateExchangeDto } from './dto/update-exchange.dto';
+import { ExchangeEventsService } from '../exchange-events/exchange-events.service';
 
 @Controller('exchanges')
 export class ExchangesController {
   constructor(
     private readonly exchangesService: ExchangesService,
     private readonly ccxtService: CcxtService,
+    private readonly exchangeEvents: ExchangeEventsService,
   ) {}
 
   @Post()
@@ -28,31 +30,6 @@ export class ExchangesController {
   @Get()
   findAll() {
     return this.exchangesService.findAll();
-  }
-
-  /** Load markets for all exchanges (force refresh from each exchange). */
-  @Post('load-markets')
-  async loadAllMarkets() {
-    const exchanges = await this.exchangesService.findAll();
-    const results = await Promise.allSettled(
-      exchanges.map((ex) =>
-        this.ccxtService.refreshMarkets(ex.id).then((markets) => ({
-          exchangeId: ex.id,
-          name: ex.name ?? ex.type,
-          count: Array.isArray(markets) ? markets.length : 0,
-        })),
-      ),
-    );
-    return results.map((r, i) =>
-      r.status === 'fulfilled'
-        ? { ...r.value, success: true as const }
-        : {
-            exchangeId: exchanges[i].id,
-            name: exchanges[i].name ?? exchanges[i].type,
-            success: false as const,
-            error: (r as PromiseRejectedResult).reason?.message ?? String((r as PromiseRejectedResult).reason),
-          },
-    );
   }
 
   // --- CCXT API (must be declared before :id so path segments like "balance" are not treated as id) ---
@@ -73,13 +50,21 @@ export class ExchangesController {
 
   @Get(':id/markets')
   getMarkets(@Param('id') id: string) {
-    return this.ccxtService.getMarketsWithMeta(id);
+    const snapshot = this.exchangeEvents.getMarkets(id);
+    if (snapshot) {
+      return snapshot;
+    }
+    // Fallback to direct CCXT call if microservice is not yet providing data
+    return {
+      markets: [],
+      loadedAt: null,
+    };
   }
 
   /** Force-load (refresh) markets from the exchange and cache them. */
   @Post(':id/markets/load')
-  loadMarkets(@Param('id') id: string) {
-    return this.ccxtService.refreshMarkets(id);
+  loadMarkets(@Param('type') type: string) {
+    return this.exchangeEvents.refreshMarkets(type);
   }
 
   @Get(':id/tickers')
@@ -134,6 +119,12 @@ export class ExchangesController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.exchangesService.findOne(id);
+  }
+
+  @Get(':id/health')
+  getHealth(@Param('id') id: string) {
+    const health = this.exchangeEvents.getHealth(id);
+    return health ?? { status: 'unknown' };
   }
 
   @Patch(':id')

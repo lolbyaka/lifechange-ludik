@@ -1,5 +1,10 @@
 import { api } from './client';
-import type { Exchange, CreateExchangeInput, UpdateExchangeInput } from '../types/exchange';
+import type {
+  Exchange,
+  CreateExchangeInput,
+  UpdateExchangeInput,
+  ExchangeType,
+} from '../types/exchange';
 
 /** CCXT-style balance: total/free/used per currency, plus info by currency */
 export interface ExchangeBalance {
@@ -7,6 +12,14 @@ export interface ExchangeBalance {
   free?: Record<string, number>;
   used?: Record<string, number>;
   info?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface ExchangeHealth {
+  status: 'connected' | 'disconnected' | 'unknown';
+  type?: ExchangeType;
+  timestamp?: string;
+  reason?: string | null;
   [key: string]: unknown;
 }
 
@@ -55,15 +68,13 @@ export interface CcxtTicker {
 export const exchangesApi = {
   list: () => api.get<Exchange[]>('/exchanges'),
   get: (id: string) => api.get<Exchange>(`/exchanges/${id}`),
+  getHealth: (id: string) => api.get<ExchangeHealth>(`/exchanges/${id}/health`),
   getBalance: (id: string) => api.get<ExchangeBalance>(`/exchanges/${id}/balance`),
   getMarkets: (id: string) => api.get<ExchangeMarketsResponse>(`/exchanges/${id}/markets`),
   getTickers: (id: string) => api.get<Record<string, CcxtTicker>>(`/exchanges/${id}/tickers`),
   /** Force-load markets from exchange (refresh cache). Returns markets array. */
   loadMarkets: (id: string) =>
     api.post<unknown[]>(`/exchanges/${id}/markets/load`, {}),
-  /** Load markets for all exchanges. Returns array of { exchangeId, name, success, count?, error? }. */
-  loadAllMarkets: () =>
-    api.post<LoadMarketsResult[]>('/exchanges/load-markets', {}),
   create: (data: CreateExchangeInput) => api.post<Exchange>('/exchanges', data),
   update: (id: string, data: UpdateExchangeInput) =>
     api.patch<Exchange>(`/exchanges/${id}`, data),

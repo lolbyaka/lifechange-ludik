@@ -6,6 +6,8 @@ import type {
   BotStrategy,
 } from '../types/bot';
 import { BOT_STRATEGIES, BOT_DIRECTIONS } from '../types/bot';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
 
 interface BotFormProps {
   bot: TradeBot | null;
@@ -60,15 +62,15 @@ export function BotForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-4 space-y-4"
+      className="space-y-4 rounded-xl border bg-card p-4 text-card-foreground shadow-sm"
     >
-      <h3 className="font-medium text-slate-200">
+      <h3 className="font-medium">
         {isEdit ? 'Edit bot' : 'Add bot'}
       </h3>
 
       {!isEdit && (
         <div>
-          <label htmlFor="bot-exchange" className="block text-sm font-medium text-slate-400">
+          <label htmlFor="bot-exchange" className="block text-sm font-medium text-foreground">
             Exchange
           </label>
           <select
@@ -76,7 +78,7 @@ export function BotForm({
             value={exchangeId}
             onChange={(e) => setExchangeId(e.target.value)}
             required
-            className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="">Select exchange</option>
             {exchangeOptions.map((ex) => (
@@ -89,14 +91,14 @@ export function BotForm({
       )}
 
       <div>
-        <label htmlFor="bot-strategy" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="bot-strategy" className="block text-sm font-medium text-foreground">
           Strategy
         </label>
         <select
           id="bot-strategy"
           value={strategy}
           onChange={(e) => setStrategy(e.target.value as BotStrategy)}
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {BOT_STRATEGIES.map((s) => (
             <option key={s} value={s}>
@@ -107,14 +109,14 @@ export function BotForm({
       </div>
 
       <div>
-        <label htmlFor="bot-direction" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="bot-direction" className="block text-sm font-medium text-foreground">
           Direction
         </label>
         <select
           id="bot-direction"
           value={direction}
           onChange={(e) => setDirection(e.target.value as BotDirection)}
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {BOT_DIRECTIONS.map((d) => (
             <option key={d} value={d}>
@@ -125,25 +127,24 @@ export function BotForm({
       </div>
 
       <div>
-        <label htmlFor="bot-ticker" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="bot-ticker" className="block text-sm font-medium text-foreground">
           Ticker
         </label>
-        <input
+        <Input
           id="bot-ticker"
           type="text"
           value={ticker}
           onChange={(e) => setTicker(e.target.value)}
           required
           placeholder="e.g. BTC/USDT:US"
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
       </div>
 
       <div>
-        <label htmlFor="bot-amount" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="bot-amount" className="block text-sm font-medium text-foreground">
           Amount (USD)
         </label>
-        <input
+        <Input
           id="bot-amount"
           type="text"
           inputMode="decimal"
@@ -151,25 +152,23 @@ export function BotForm({
           onChange={(e) => setAmount(e.target.value)}
           required
           placeholder="e.g. 100"
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
       </div>
 
       <div className="flex gap-2 pt-2">
-        <button
+        <Button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
         >
           {pending ? 'Saving…' : isEdit ? 'Update' : 'Add'}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="outline"
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-700"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

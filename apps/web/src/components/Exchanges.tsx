@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useExchanges, useCreateExchange, useDeleteExchange, useLoadAllMarkets } from '../hooks/useExchanges';
+import { useExchanges, useCreateExchange, useDeleteExchange } from '../hooks/useExchanges';
 import type { CreateExchangeInput, Exchange } from '../types/exchange';
 import { ExchangeForm } from './ExchangeForm';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Alert, AlertDescription } from './ui/alert';
 
 function maskKey(key: string) {
   if (!key || key.length < 8) return '••••••••';
@@ -13,7 +16,6 @@ export function Exchanges() {
   const { data: exchanges, isLoading, error } = useExchanges();
   const createMutation = useCreateExchange();
   const deleteMutation = useDeleteExchange();
-  const loadAllMarketsMutation = useLoadAllMarkets();
   const [editing, setEditing] = useState<Exchange | null>(null);
   const [showForm, setShowForm] = useState(false);
 
@@ -32,124 +34,102 @@ export function Exchanges() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-slate-400">Loading exchanges…</span>
+        <span className="text-muted-foreground">Loading exchanges…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 text-red-300">
-        Failed to load exchanges: {(error as Error).message}
-      </div>
+      <Alert variant="destructive">
+        <AlertDescription>
+          Failed to load exchanges: {(error as Error).message}
+        </AlertDescription>
+      </Alert>
     );
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-medium text-slate-200">Exchanges</h2>
+        <h2 className="text-lg font-semibold text-foreground">Exchanges</h2>
         {!showForm && !editing && (
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => loadAllMarketsMutation.mutate()}
-              disabled={!exchanges?.length || loadAllMarketsMutation.isPending}
-              className="rounded-md border border-slate-600 bg-slate-800/80 px-3 py-1.5 text-sm font-medium text-slate-200 hover:bg-slate-700/80 disabled:opacity-50"
-            >
-              {loadAllMarketsMutation.isPending ? 'Loading all markets…' : 'Load all markets'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500"
-            >
+            <Button size="sm" onClick={() => setShowForm(true)}>
               Add exchange
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
       {(showForm || editing) && (
-        <ExchangeForm
-          exchange={editing}
-          onSubmit={handleCreate}
-          onCancel={() => {
-            setShowForm(false);
-            setEditing(null);
-          }}
-          isLoading={createMutation.isPending}
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle>{editing ? 'Edit exchange' : 'Add exchange'}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ExchangeForm
+              exchange={editing}
+              onSubmit={handleCreate}
+              onCancel={() => {
+                setShowForm(false);
+                setEditing(null);
+              }}
+              isLoading={createMutation.isPending}
+            />
+          </CardContent>
+        </Card>
       )}
 
       {exchanges?.length === 0 && !showForm ? (
-        <div className="rounded-lg border border-slate-700/50 bg-slate-900/30 px-4 py-8 text-center text-slate-400">
-          No exchanges yet. Add one to get started.
-        </div>
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            No exchanges yet. Add one to get started.
+          </CardContent>
+        </Card>
       ) : (
         <>
-          {loadAllMarketsMutation.isSuccess && Array.isArray(loadAllMarketsMutation.data) && (
-            <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 px-4 py-2 text-sm text-slate-300">
-              Loaded markets: {loadAllMarketsMutation.data.filter((r) => r.success).length} succeeded,{' '}
-              {loadAllMarketsMutation.data.filter((r) => !r.success).length} failed.
-              {loadAllMarketsMutation.data.some((r) => !r.success) && (
-                <ul className="mt-1 list-inside list-disc text-amber-400">
-                  {loadAllMarketsMutation.data
-                    .filter((r) => !r.success)
-                    .map((r) => (
-                      <li key={r.exchangeId}>
-                        {r.name}: {r.error}
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </div>
-          )}
-          {loadAllMarketsMutation.isError && (
-            <div className="rounded-lg border border-amber-900/50 bg-amber-950/30 px-4 py-2 text-sm text-amber-300">
-              Load all markets failed: {(loadAllMarketsMutation.error as Error).message}
-            </div>
-          )}
           <ul className="space-y-3">
           {exchanges?.map((ex) => (
-            <li
-              key={ex.id}
-              className="flex items-center justify-between rounded-lg border border-slate-700/50 bg-slate-900/30 px-4 py-3"
-            >
-              <Link
-                to={`/exchanges/${ex.id}`}
-                className="min-w-0 flex-1 hover:opacity-90"
-              >
-                <span className="font-medium capitalize text-slate-200">
-                  {ex.name ?? ex.type}
-                </span>
-                <p className="mt-0.5 truncate text-sm text-slate-500">
-                  API key: {maskKey(ex.apiKey)}
-                </p>
-              </Link>
-              <div className="flex shrink-0 gap-2">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setEditing(ex);
-                  }}
-                  className="rounded px-2 py-1 text-sm text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
+            <li key={ex.id}>
+              <Card className="flex items-center justify-between gap-4 px-4 py-3">
+                <Link
+                  to={`/exchanges/${ex.id}`}
+                  className="min-w-0 flex-1 hover:opacity-90"
                 >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleDelete(ex.id);
-                  }}
-                  disabled={deleteMutation.isPending}
-                  className="rounded px-2 py-1 text-sm text-red-400 hover:bg-red-950/50 hover:text-red-300 disabled:opacity-50"
-                >
-                  Delete
-                </button>
-              </div>
+                  <div className="font-medium capitalize text-foreground">
+                    {ex.name ?? ex.type}
+                  </div>
+                  <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                    API key: {maskKey(ex.apiKey)}
+                  </p>
+                </Link>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setEditing(ex);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleDelete(ex.id);
+                    }}
+                    disabled={deleteMutation.isPending}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </Card>
             </li>
           ))}
           </ul>

@@ -34,6 +34,19 @@ export function useExchangeBalance(exchangeId: string | null) {
   });
 }
 
+export function useExchangeHealth(exchangeId: string | null) {
+  return useQuery({
+    queryKey: [...QUERY_KEY, exchangeId, 'health'],
+    queryFn: () =>
+      exchangeId
+        ? exchangesApi.getHealth(exchangeId)
+        : Promise.reject(new Error('No exchange id')),
+    enabled: !!exchangeId,
+    // Poll periodically so the UI reflects up-to-date connection state
+    refetchInterval: 10000,
+  });
+}
+
 export function useExchangeMarkets(exchangeId: string | null) {
   return useQuery({
     queryKey: [...QUERY_KEY, exchangeId, 'markets'],
@@ -88,13 +101,5 @@ export function useLoadMarkets() {
     onSuccess: (_, exchangeId) => {
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEY, exchangeId, 'markets'] });
     },
-  });
-}
-
-export function useLoadAllMarkets() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => exchangesApi.loadAllMarkets(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
   });
 }

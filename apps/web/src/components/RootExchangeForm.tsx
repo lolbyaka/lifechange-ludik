@@ -5,6 +5,8 @@ import type {
 } from '../types/root-exchange';
 import type { ExchangeType } from '../types/exchange';
 import { EXCHANGE_TYPES } from '../types/exchange';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
 
 interface RootExchangeFormProps {
   exchange: RootExchange | null;
@@ -54,37 +56,29 @@ export function RootExchangeForm({
   const pending = isLoading;
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-4 space-y-4"
-    >
-      <h3 className="font-medium text-slate-200">
-        {isEdit ? 'Edit root exchange' : 'Add root exchange'}
-      </h3>
-
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="admin-name" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="admin-name" className="block text-sm font-medium text-foreground">
           Name <span className="text-slate-500">(optional)</span>
         </label>
-        <input
+        <Input
           id="admin-name"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           placeholder="e.g. Global Binance Config"
         />
       </div>
 
       <div>
-        <label htmlFor="admin-type" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="admin-type" className="block text-sm font-medium text-foreground">
           Exchange
         </label>
         <select
           id="admin-type"
           value={type}
           onChange={(e) => setType(e.target.value as ExchangeType)}
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {EXCHANGE_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -95,78 +89,73 @@ export function RootExchangeForm({
       </div>
 
       <div>
-        <label htmlFor="admin-apiKey" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="admin-apiKey" className="block text-sm font-medium text-foreground">
           API Key
         </label>
-        <input
+        <Input
           id="admin-apiKey"
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           required
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           placeholder="Your API key"
         />
       </div>
 
       <div>
-        <label htmlFor="admin-secretKey" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="admin-secretKey" className="block text-sm font-medium text-foreground">
           Secret Key
         </label>
-        <input
+        <Input
           id="admin-secretKey"
           type="password"
           value={secretKey}
           onChange={(e) => setSecretKey(e.target.value)}
           required
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           placeholder="Your secret key"
         />
       </div>
 
       <div>
-        <label htmlFor="admin-passphrase" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="admin-passphrase" className="block text-sm font-medium text-foreground">
           Passphrase <span className="text-slate-500">(optional)</span>
         </label>
-        <input
+        <Input
           id="admin-passphrase"
           type="password"
           value={passphrase}
           onChange={(e) => setPassphrase(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           placeholder="e.g. for OKX"
         />
       </div>
 
       <div>
-        <label htmlFor="admin-walletAddress" className="block text-sm font-medium text-slate-400">
+        <label htmlFor="admin-walletAddress" className="block text-sm font-medium text-foreground">
           Wallet address <span className="text-slate-500">(for Hyperliquid / DEX)</span>
         </label>
-        <input
+        <Input
           id="admin-walletAddress"
           type="text"
           value={walletAddress}
           onChange={(e) => setWalletAddress(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           placeholder="0x... (EVM address for Hyperliquid)"
         />
       </div>
 
       <div className="flex gap-2 pt-2">
-        <button
+        <Button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
         >
           {pending ? 'Saving…' : isEdit ? 'Update' : 'Add'}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="outline"
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-700"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

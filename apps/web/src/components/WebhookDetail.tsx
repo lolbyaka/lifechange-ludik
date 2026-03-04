@@ -1,5 +1,8 @@
 import { Link, useParams } from 'react-router-dom';
 import { useWebhook } from '../hooks/useWebhooks';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Button } from './ui/button';
+import { Alert, AlertDescription } from './ui/alert';
 
 function formatDate(iso: string) {
   try {
@@ -16,21 +19,23 @@ export function WebhookDetail() {
   if (isLoading || !id) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-slate-400">Loading…</span>
+        <span className="text-muted-foreground">Loading…</span>
       </div>
     );
   }
 
   if (error || !webhook) {
     return (
-      <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 text-red-300">
-        Failed to load webhook: {(error as Error)?.message ?? 'Not found'}
+      <Alert variant="destructive">
+        <AlertDescription>
+          Failed to load webhook: {(error as Error)?.message ?? 'Not found'}
+        </AlertDescription>
         <div className="mt-3">
-          <Link to="/webhooks" className="text-sm text-red-200 hover:underline">
-            ← Back to webhooks
-          </Link>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/webhooks">← Back to webhooks</Link>
+          </Button>
         </div>
-      </div>
+      </Alert>
     );
   }
 
@@ -45,33 +50,44 @@ export function WebhookDetail() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link
-          to="/webhooks"
-          className="rounded p-1.5 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
           aria-label="Back to webhooks"
         >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </Link>
-        <h2 className="text-lg font-medium text-slate-200">Webhook</h2>
+          <Link to="/webhooks">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+        </Button>
+        <h2 className="text-lg font-semibold tracking-tight">Webhook</h2>
       </div>
 
-      <section>
-        <h3 className="mb-2 text-sm font-medium uppercase tracking-wider text-slate-500">
-          Received at
-        </h3>
-        <p className="text-sm text-slate-300">{formatDate(webhook.createdAt)}</p>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Received at
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-foreground">{formatDate(webhook.createdAt)}</p>
+        </CardContent>
+      </Card>
 
-      <section>
-        <h3 className="mb-2 text-sm font-medium uppercase tracking-wider text-slate-500">
-          Payload
-        </h3>
-        <pre className="overflow-x-auto rounded-lg border border-slate-700/50 bg-slate-900/50 p-4 text-sm text-slate-300 whitespace-pre-wrap font-mono">
-          {payloadJson}
-        </pre>
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Payload
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted p-4 text-xs sm:text-sm font-mono text-foreground overflow-x-auto">
+            {payloadJson}
+          </pre>
+        </CardContent>
+      </Card>
     </div>
   );
 }

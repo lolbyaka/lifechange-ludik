@@ -1,17 +1,16 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   useExchange,
   useExchangeBalance,
-  useExchangeMarkets,
-  useExchangeTickers,
-  useLoadMarkets,
 } from '../hooks/useExchanges';
-import type {
-  ExchangeBalance,
-  ExchangeMarketsResponse,
-  CcxtMarket,
-  CcxtTicker,
-} from '../api/exchanges';
+import { useBots, useCreateBot, useUpdateBot, useDeleteBot } from '../hooks/useBots';
+import type { ExchangeBalance } from '../api/exchanges';
+import type { CreateTradeBotInput, TradeBot } from '../types/bot';
+import { BotForm } from './BotForm';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Button } from './ui/button';
+import { Alert, AlertDescription } from './ui/alert';
 
 function BalanceTable({ balance }: { balance: ExchangeBalance }) {
   const total = balance.total ?? {};
@@ -35,14 +34,14 @@ function BalanceTable({ balance }: { balance: ExchangeBalance }) {
 
   if (entries.length === 0) {
     return (
-      <p className="text-slate-500 text-sm">No balances or all zero.</p>
+      <p className="text-sm text-muted-foreground">No balances or all zero.</p>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-700/50">
+    <div className="overflow-x-auto rounded-lg border border-border bg-card">
       <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-slate-700/50 bg-slate-800/50 text-slate-400">
+        <thead className="border-b border-border bg-muted text-muted-foreground">
           <tr>
             <th className="px-4 py-3 font-medium">Currency</th>
             <th className="px-4 py-3 font-medium text-right">Total</th>
@@ -50,130 +49,16 @@ function BalanceTable({ balance }: { balance: ExchangeBalance }) {
             <th className="px-4 py-3 font-medium text-right">Used</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-700/30">
+        <tbody className="divide-y divide-border/60">
           {entries.map(({ currency, total: t, free: f, used: u }) => (
-            <tr key={currency} className="text-slate-200">
+            <tr key={currency} className="text-foreground">
               <td className="px-4 py-2.5 font-medium">{currency}</td>
               <td className="px-4 py-2.5 text-right tabular-nums">{t.toLocaleString()}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums text-slate-400">{f.toLocaleString()}</td>
-              <td className="px-4 py-2.5 text-right tabular-nums text-slate-400">{u.toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-const SWAP_FUTURES_TYPES = ['swap', 'future', 'futures'];
-
-function isSwapOrFutures(m: CcxtMarket): boolean {
-  const t = (m.type ?? '').toString().toLowerCase();
-  return SWAP_FUTURES_TYPES.some((type) => t === type);
-}
-
-function MarketsTable({ data }: { data: ExchangeMarketsResponse }) {
-  const { markets, loadedAt } = data;
-  const all = (markets || []) as CcxtMarket[];
-  const rows = all.filter(isSwapOrFutures);
-  if (rows.length === 0) {
-    return (
-      <p className="text-slate-500 text-sm">
-        No markets loaded. Use &quot;Load markets&quot; to fetch from the exchange.
-      </p>
-    );
-  }
-  return (
-    <div className="space-y-2">
-      {loadedAt != null && (
-        <p className="text-slate-500 text-xs">
-          Last updated: {new Date(loadedAt).toLocaleString()}
-        </p>
-      )}
-      <div className="overflow-x-auto rounded-lg border border-slate-700/50 max-h-80 overflow-y-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead className="sticky top-0 border-b border-slate-700/50 bg-slate-800/50 text-slate-400">
-            <tr>
-              <th className="px-4 py-2 font-medium">Symbol</th>
-              <th className="px-4 py-2 font-medium">Base</th>
-              <th className="px-4 py-2 font-medium">Quote</th>
-              <th className="px-4 py-2 font-medium">Type</th>
-              <th className="px-4 py-2 font-medium">Active</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700/30">
-            {rows.map((m) => (
-              <tr key={m.id ?? m.symbol ?? String(m)} className="text-slate-200">
-                <td className="px-4 py-2 font-mono text-xs">{m.symbol ?? '—'}</td>
-                <td className="px-4 py-2">{m.base ?? '—'}</td>
-                <td className="px-4 py-2">{m.quote ?? '—'}</td>
-                <td className="px-4 py-2">{m.type ?? '—'}</td>
-                <td className="px-4 py-2">{m.active == null ? '—' : m.active ? 'Yes' : 'No'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function TickersTable({
-  tickers,
-  swapFuturesSymbols,
-}: {
-  tickers: Record<string, CcxtTicker>;
-  swapFuturesSymbols: Set<string>;
-}) {
-  const entries = Object.entries(tickers || {}).filter(
-    ([k, v]) =>
-      k !== 'info' &&
-      v != null &&
-      typeof v === 'object' &&
-      (swapFuturesSymbols.size === 0 || swapFuturesSymbols.has(k))
-  );
-  if (entries.length === 0) {
-    return (
-      <p className="text-slate-500 text-sm">
-        No ticker data. Load markets first; tickers are fetched from the exchange.
-      </p>
-    );
-  }
-  const sorted = entries
-    .map(([symbol, t]) => ({ symbol, ...t }))
-    .sort((a, b) => (b.baseVolume ?? 0) - (a.baseVolume ?? 0))
-    .slice(0, 100);
-  return (
-    <div className="overflow-x-auto rounded-lg border border-slate-700/50 max-h-80 overflow-y-auto">
-      <table className="min-w-full text-left text-sm">
-        <thead className="sticky top-0 border-b border-slate-700/50 bg-slate-800/50 text-slate-400">
-          <tr>
-            <th className="px-4 py-2 font-medium">Symbol</th>
-            <th className="px-4 py-2 font-medium text-right">Last</th>
-            <th className="px-4 py-2 font-medium text-right">Change %</th>
-            <th className="px-4 py-2 font-medium text-right">Volume</th>
-            <th className="px-4 py-2 font-medium text-right">Bid / Ask</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-700/30">
-          {sorted.map((t) => (
-            <tr key={t.symbol ?? ''} className="text-slate-200">
-              <td className="px-4 py-2 font-mono text-xs">{t.symbol ?? '—'}</td>
-              <td className="px-4 py-2 text-right tabular-nums">{formatNum(t.last)}</td>
-              <td className="px-4 py-2 text-right tabular-nums">
-                {t.percentage != null ? (
-                  <span className={t.percentage >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                    {t.percentage >= 0 ? '+' : ''}{t.percentage.toFixed(2)}%
-                  </span>
-                ) : (
-                  '—'
-                )}
+              <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                {f.toLocaleString()}
               </td>
-              <td className="px-4 py-2 text-right tabular-nums text-slate-400">
-                {formatNum(t.baseVolume)}
-              </td>
-              <td className="px-4 py-2 text-right tabular-nums text-slate-400">
-                {formatNum(t.bid)} / {formatNum(t.ask)}
+              <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                {u.toLocaleString()}
               </td>
             </tr>
           ))}
@@ -181,40 +66,68 @@ function TickersTable({
       </table>
     </div>
   );
-}
-
-function formatNum(n: unknown): string {
-  if (n == null || typeof n !== 'number') return '—';
-  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-  if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
-  return n.toLocaleString(undefined, { maximumFractionDigits: 8 });
 }
 
 export function ExchangeDetail() {
   const { id } = useParams<{ id: string }>();
   const { data: exchange, isLoading: exchangeLoading, error: exchangeError } = useExchange(id ?? null);
   const { data: balance, isLoading: balanceLoading, error: balanceError } = useExchangeBalance(id ?? null);
-  const { data: marketsData, isLoading: marketsLoading, error: marketsError } = useExchangeMarkets(id ?? null);
-  const { data: tickers, isLoading: tickersLoading, error: tickersError } = useExchangeTickers(id ?? null);
-  const loadMarketsMutation = useLoadMarkets();
+  const { data: bots, isLoading: botsLoading, error: botsError } = useBots(id ?? undefined);
+  const createMutation = useCreateBot();
+  const updateMutation = useUpdateBot();
+  const deleteMutation = useDeleteBot();
+
+  const [editingBot, setEditingBot] = useState<TradeBot | null>(null);
+  const [showBotForm, setShowBotForm] = useState(false);
+
+  const handleCreateBot = (data: CreateTradeBotInput) => {
+    createMutation.mutate(data, {
+      onSuccess: () => setShowBotForm(false),
+    });
+  };
+
+  const handleEditBotSubmit = (data: CreateTradeBotInput) => {
+    if (!editingBot) return;
+    updateMutation.mutate(
+      {
+        id: editingBot.id,
+        data: {
+          strategy: data.strategy,
+          direction: data.direction,
+          ticker: data.ticker,
+          amount: data.amount,
+        },
+      },
+      { onSuccess: () => setEditingBot(null) },
+    );
+  };
+
+  const handleDeleteBot = (botId: string) => {
+    if (window.confirm('Delete this bot? Positions linked to it will remain in the database.')) {
+      deleteMutation.mutate(botId);
+    }
+  };
 
   if (exchangeLoading || !id) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-slate-400">Loading…</span>
+        <span className="text-muted-foreground">Loading…</span>
       </div>
     );
   }
 
   if (exchangeError || !exchange) {
     return (
-      <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 text-red-300">
-        Failed to load exchange: {(exchangeError as Error)?.message ?? 'Not found'}
+      <Alert variant="destructive">
+        <AlertDescription>
+          Failed to load exchange: {(exchangeError as Error)?.message ?? 'Not found'}
+        </AlertDescription>
         <div className="mt-3">
-          <Link to="/" className="text-sm text-red-200 hover:underline">← Back to exchanges</Link>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/">← Back to exchanges</Link>
+          </Button>
         </div>
-      </div>
+      </Alert>
     );
   }
 
@@ -223,111 +136,154 @@ export function ExchangeDetail() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link
-          to="/"
-          className="rounded p-1.5 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
           aria-label="Back to exchanges"
         >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </Link>
-        <h2 className="text-lg font-medium capitalize text-slate-200">{displayName}</h2>
+          <Link to="/">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+        </Button>
+        <h2 className="text-lg font-semibold capitalize tracking-tight">{displayName}</h2>
       </div>
 
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-medium uppercase tracking-wider text-slate-500">Balance</h3>
-          <div className="flex items-center gap-3">
-            <button
+      <section className="space-y-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Balance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {balanceLoading && (
+              <div className="flex items-center gap-2 py-4 text-muted-foreground">
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-border border-t-foreground" />
+                Loading balance…
+              </div>
+            )}
+            {balanceError && (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  Failed to load balance: {(balanceError as Error).message}
+                </AlertDescription>
+              </Alert>
+            )}
+            {balance && !balanceLoading && <BalanceTable balance={balance} />}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-4 border-t border-border/60 pt-6">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            Bots
+          </h3>
+          {!showBotForm && !editingBot && exchange && (
+            <Button
               type="button"
-              onClick={() => id && loadMarketsMutation.mutate(id)}
-              disabled={!id || loadMarketsMutation.isPending}
-              className="rounded-md border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-sm font-medium text-slate-200 hover:bg-slate-700/80 disabled:opacity-50"
+              size="sm"
+              onClick={() => setShowBotForm(true)}
             >
-              {loadMarketsMutation.isPending ? 'Loading markets…' : 'Load markets'}
-            </button>
-            <Link
-              to={`/bots?exchangeId=${encodeURIComponent(id!)}`}
-              className="text-sm text-emerald-400 hover:underline"
-            >
-              View bots →
-            </Link>
-          </div>
+              Add bot
+            </Button>
+          )}
         </div>
-        {balanceLoading && (
-          <div className="flex items-center gap-2 py-4 text-slate-400">
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-slate-200" />
-            Loading balance…
-          </div>
-        )}
-        {balanceError && (
-          <div className="rounded-lg border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-amber-300">
-            Failed to load balance: {(balanceError as Error).message}
-          </div>
-        )}
-        {balance && !balanceLoading && <BalanceTable balance={balance} />}
-        {loadMarketsMutation.isError && (
-          <p className="mt-2 text-sm text-amber-400">
-            Load markets failed: {(loadMarketsMutation.error as Error).message}
-          </p>
-        )}
-        {loadMarketsMutation.isSuccess && (
-          <p className="mt-2 text-sm text-emerald-400">
-            Markets loaded ({Array.isArray(loadMarketsMutation.data) ? loadMarketsMutation.data.length : 0} markets).
-          </p>
-        )}
-      </section>
+        <p className="text-sm text-muted-foreground">
+          Bots open positions automatically when matching signals arrive for this exchange.
+        </p>
 
-      <section>
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-slate-500">
-          Markets
-        </h3>
-        {marketsLoading && (
-          <div className="flex items-center gap-2 py-4 text-slate-400">
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-slate-200" />
-            Loading markets…
-          </div>
-        )}
-        {marketsError && (
-          <div className="rounded-lg border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-amber-300">
-            Failed to load markets: {(marketsError as Error).message}
-          </div>
-        )}
-        {marketsData && !marketsLoading && (
-          <MarketsTable data={marketsData} />
-        )}
-      </section>
-
-      <section>
-        <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-slate-500">
-          Tickers
-        </h3>
-        {tickersLoading && (
-          <div className="flex items-center gap-2 py-4 text-slate-400">
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-slate-200" />
-            Loading tickers…
-          </div>
-        )}
-        {tickersError && (
-          <div className="rounded-lg border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-amber-300">
-            Failed to load tickers: {(tickersError as Error).message}
-          </div>
-        )}
-        {tickers && !tickersLoading && (
-          <TickersTable
-            tickers={tickers}
-            swapFuturesSymbols={
-              marketsData
-                ? new Set(
-                    (marketsData.markets as CcxtMarket[])
-                      .filter(isSwapOrFutures)
-                      .map((m) => m.symbol)
-                      .filter(Boolean) as string[]
-                  )
-                : new Set()
-            }
+        {(showBotForm || editingBot) && exchange && (
+          <BotForm
+            bot={editingBot}
+            exchangeId={editingBot?.exchangeId ?? id ?? ''}
+            exchangeOptions={[
+              {
+                id: id ?? '',
+                name: exchange.name,
+                type: exchange.type,
+              },
+            ]}
+            onSubmit={editingBot ? handleEditBotSubmit : handleCreateBot}
+            onCancel={() => {
+              setShowBotForm(false);
+              setEditingBot(null);
+            }}
+            isLoading={createMutation.isPending || updateMutation.isPending}
           />
+        )}
+
+        {botsLoading && (
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-border border-t-foreground" />
+            Loading bots…
+          </div>
+        )}
+
+        {botsError && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              Failed to load bots: {(botsError as Error).message}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {bots && bots.length === 0 && !showBotForm && !editingBot && !botsLoading && !botsError && (
+          <Card>
+            <CardContent className="px-4 py-4 text-sm text-muted-foreground">
+              No bots yet for this exchange. Add a bot to have positions opened automatically when signals arrive.
+            </CardContent>
+          </Card>
+        )}
+
+        {bots && bots.length > 0 && (
+          <ul className="space-y-3">
+            {bots.map((bot) => (
+              <li key={bot.id}>
+                <Card className="flex items-center justify-between gap-4 px-4 py-3">
+                  <Link
+                    to={`/exchanges/${encodeURIComponent(id ?? '')}/bots/${encodeURIComponent(bot.id)}`}
+                    className="min-w-0 flex-1 hover:opacity-90"
+                  >
+                    <span className="font-medium text-foreground">
+                      {bot.strategy} · {bot.ticker}
+                    </span>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {bot.direction} · ${bot.amount} USD
+                    </p>
+                  </Link>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setEditingBot(bot);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleDeleteBot(bot.id);
+                      }}
+                      disabled={deleteMutation.isPending}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </Card>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </div>

@@ -7,10 +7,14 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { SignalsModule } from './signals/signals.module';
 import { BotsModule } from './bots/bots.module';
 import { RootExchangesModule } from './root-exchanges/root-exchanges.module';
+import { RedisModule } from './redis/redis.module';
+import { ExchangeEventsModule } from './exchange-events/exchange-events.module';
 
 @Module({
   imports: [
     PrismaModule,
+    RedisModule,
+    ExchangeEventsModule,
     ExchangesModule,
     WebhooksModule,
     SignalsModule,
