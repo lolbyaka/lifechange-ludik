@@ -35,6 +35,20 @@ model Exchange {
   tradeBots      TradeBot[]
 }
 
+/// Root-level exchange configuration managed from the admin UI.
+/// Separate from user exchange connections used by bots.
+model RootExchange {
+  id            String       @id @default(auto()) @map("_id") @db.ObjectId
+  name          String?
+  apiKey        String
+  secretKey     String
+  passphrase    String?
+  walletAddress String?
+  type          ExchangeType
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
 enum TradeBotDirection {
   LONG
   SHORT

@@ -7,6 +7,7 @@ import { Signals } from './components/Signals';
 import { SignalDetail } from './components/SignalDetail';
 import { Bots } from './components/Bots';
 import { BotDetail } from './components/BotDetail';
+import { Admin } from './components/Admin';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -38,6 +39,9 @@ function App() {
                 <NavLink to="/bots" className={navLinkClass}>
                   Bots
                 </NavLink>
+                <NavLink to="/admin" className={navLinkClass}>
+                  Admin
+                </NavLink>
               </nav>
             </div>
           </div>
@@ -52,6 +56,7 @@ function App() {
             <Route path="/signals/:id" element={<SignalDetail />} />
             <Route path="/bots" element={<Bots />} />
             <Route path="/bots/:id" element={<BotDetail />} />
+            <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
       </div>

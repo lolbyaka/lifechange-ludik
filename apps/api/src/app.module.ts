@@ -6,6 +6,7 @@ import { ExchangesModule } from './exchanges/exchanges.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { SignalsModule } from './signals/signals.module';
 import { BotsModule } from './bots/bots.module';
+import { RootExchangesModule } from './root-exchanges/root-exchanges.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { BotsModule } from './bots/bots.module';
     WebhooksModule,
     SignalsModule,
     BotsModule,
+    RootExchangesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
