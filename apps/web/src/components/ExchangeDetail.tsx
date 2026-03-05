@@ -3,9 +3,10 @@ import { Link, useParams } from 'react-router-dom';
 import {
   useExchange,
   useExchangeBalance,
+  useExchangeTradesHistory,
 } from '../hooks/useExchanges';
 import { useBots, useCreateBot, useUpdateBot, useDeleteBot } from '../hooks/useBots';
-import type { ExchangeBalance } from '../api/exchanges';
+import type { ExchangeBalance, CcxtPosition } from '../api/exchanges';
 import type { CreateTradeBotInput, TradeBot } from '../types/bot';
 import { BotForm } from './BotForm';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
@@ -68,11 +69,111 @@ function BalanceTable({ balance }: { balance: ExchangeBalance }) {
   );
 }
 
+function formatDateTime(timestamp?: number, iso?: string) {
+  try {
+    if (iso) return new Date(iso).toLocaleString();
+    if (typeof timestamp === 'number') return new Date(timestamp).toLocaleString();
+  } catch {
+    // fall through
+  }
+  return iso ?? (timestamp ? String(timestamp) : '—');
+}
+
+function PositionsHistoryTable({ positions }: { positions: CcxtPosition[] }) {
+  if (!positions.length) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No positions recorded yet for this exchange.
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border bg-card">
+      <table className="min-w-full text-left text-sm">
+        <thead className="border-b border-border bg-muted text-muted-foreground">
+          <tr>
+            <th className="px-4 py-3 font-medium">Time</th>
+            <th className="px-4 py-3 font-medium">Symbol</th>
+            <th className="px-4 py-3 font-medium">Direction</th>
+            <th className="px-4 py-3 font-medium">Side</th>
+            <th className="px-4 py-3 font-medium text-right">Size</th>
+            <th className="px-4 py-3 font-medium text-right">Price</th>
+            <th className="px-4 py-3 font-medium text-right">Notional</th>
+            <th className="px-4 py-3 font-medium text-right">Fee</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/60">
+          {positions.map((pos, index) => {
+            const size =
+              typeof pos.amount === 'number'
+                ? pos.amount
+                : pos.info?.sz
+                  ? Number(pos.info.sz)
+                  : undefined;
+            const feeCurrency = pos.fee?.currency ?? pos.info?.feeToken;
+            const feeAmount =
+              typeof pos.fee?.cost === 'number'
+                ? pos.fee.cost
+                : pos.info?.fee
+                  ? Number(pos.info.fee)
+                  : undefined;
+
+            const key = pos.id ?? `${pos.symbol ?? 'position'}-${pos.timestamp ?? index}-${index}`;
+
+            return (
+              <tr key={key} className="text-foreground">
+                <td className="px-4 py-2.5 text-muted-foreground">
+                  {formatDateTime(pos.timestamp, pos.datetime)}
+                </td>
+                <td className="px-4 py-2.5 font-medium">
+                  {pos.symbol ?? pos.info?.coin ?? '—'}
+                </td>
+                <td className="px-4 py-2.5 text-muted-foreground">
+                  {pos.info?.dir ?? '—'}
+                </td>
+                <td className="px-4 py-2.5 uppercase">
+                  {pos.side ?? pos.info?.side ?? '—'}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums">
+                  {typeof size === 'number' ? size.toLocaleString() : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums">
+                  {typeof pos.price === 'number'
+                    ? pos.price.toLocaleString()
+                    : pos.info?.px
+                      ? Number(pos.info.px).toLocaleString()
+                      : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums">
+                  {typeof pos.cost === 'number'
+                    ? pos.cost.toLocaleString()
+                    : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                  {typeof feeAmount === 'number'
+                    ? `${feeAmount.toLocaleString()} ${feeCurrency ?? ''}`.trim()
+                    : '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function ExchangeDetail() {
   const { id } = useParams<{ id: string }>();
   const { data: exchange, isLoading: exchangeLoading, error: exchangeError } = useExchange(id ?? null);
   const { data: balance, isLoading: balanceLoading, error: balanceError } = useExchangeBalance(id ?? null);
   const { data: bots, isLoading: botsLoading, error: botsError } = useBots(id ?? undefined);
+  const {
+    data: tradesHistory,
+    isLoading: tradesLoading,
+    error: tradesError,
+  } = useExchangeTradesHistory(id ?? null, 100);
   const createMutation = useCreateBot();
   const updateMutation = useUpdateBot();
   const deleteMutation = useDeleteBot();
@@ -175,6 +276,36 @@ export function ExchangeDetail() {
             {balance && !balanceLoading && <BalanceTable balance={balance} />}
           </CardContent>
         </Card>
+      </section>
+
+      <section className="space-y-4 border-t border-border/60 pt-6">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            Trades history
+          </h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          All trades opened on this exchange by any bot.
+        </p>
+
+        {tradesLoading && (
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-border border-t-foreground" />
+            Loading trades…
+          </div>
+        )}
+
+        {tradesError && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              Failed to load trades: {(tradesError as Error).message}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {tradesHistory && !tradesLoading && !tradesError && (
+          <PositionsHistoryTable positions={tradesHistory} />
+        )}
       </section>
 
       <section className="space-y-4 border-t border-border/60 pt-6">

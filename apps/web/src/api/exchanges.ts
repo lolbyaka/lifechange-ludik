@@ -65,6 +65,50 @@ export interface CcxtTicker {
   [key: string]: unknown;
 }
 
+/** CCXT position/trade history entry (shape may vary by exchange) */
+export interface CcxtPosition {
+  /** Raw exchange payload */
+  info?: {
+    coin?: string;
+    px?: string;
+    sz?: string;
+    side?: string;
+    time?: string;
+    startPosition?: string;
+    dir?: string;
+    closedPnl?: string;
+    hash?: string;
+    oid?: string;
+    crossed?: boolean;
+    fee?: string;
+    tid?: string;
+    feeToken?: string;
+    twapId?: string | null;
+    [key: string]: unknown;
+  };
+  timestamp?: number;
+  datetime?: string;
+  symbol?: string;
+  id?: string;
+  order?: string;
+  side?: string;
+  takerOrMaker?: string;
+  price?: number;
+  amount?: number;
+  cost?: number;
+  fee?: {
+    currency?: string;
+    cost?: number;
+    [key: string]: unknown;
+  } | null;
+  fees?: {
+    currency?: string;
+    cost?: number;
+    [key: string]: unknown;
+  }[];
+  [key: string]: unknown;
+}
+
 export const exchangesApi = {
   list: () => api.get<Exchange[]>('/exchanges'),
   get: (id: string) => api.get<Exchange>(`/exchanges/${id}`),
@@ -72,6 +116,10 @@ export const exchangesApi = {
   getBalance: (id: string) => api.get<ExchangeBalance>(`/exchanges/${id}/balance`),
   getMarkets: (id: string) => api.get<ExchangeMarketsResponse>(`/exchanges/${id}/markets`),
   getTickers: (id: string) => api.get<Record<string, CcxtTicker>>(`/exchanges/${id}/tickers`),
+  getTradesHistory: (id: string, limit?: number) =>
+    api.get<CcxtPosition[]>(
+      `/exchanges/${id}/trades-history${limit ? `?limit=${encodeURIComponent(String(limit))}` : ''}`,
+    ),
   /** Force-load markets from exchange (refresh cache). Returns markets array. */
   loadMarkets: (id: string) =>
     api.post<unknown[]>(`/exchanges/${id}/markets/load`, {}),

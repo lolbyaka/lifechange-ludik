@@ -45,7 +45,25 @@ export class ExchangesController {
     @Query('symbols') symbols?: string,
   ) {
     const symbolList = symbols ? symbols.split(',').map((s) => s.trim()) : undefined;
-    return this.ccxtService.fetchPositions(id, symbolList);
+    return this.ccxtService.fetchTrades(id, symbolList);
+  }
+
+  @Get(':id/trades-history')
+  getTradesHistory(
+    @Param('id') id: string,
+    @Query('symbols') symbols?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const symbolList = symbols ? symbols.split(',').map((s) => s.trim()) : undefined;
+    const params: Record<string, unknown> = {};
+    if (typeof limit === 'string' && !Number.isNaN(Number(limit))) {
+      params.limit = Math.max(1, Math.min(500, Number(limit)));
+    }
+    return this.ccxtService.fetchTrades(
+      id,
+      symbolList,
+      Object.keys(params).length ? params : undefined,
+    );
   }
 
   @Get(':id/markets')

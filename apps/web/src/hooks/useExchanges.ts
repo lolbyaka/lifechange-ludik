@@ -69,6 +69,20 @@ export function useExchangeTickers(exchangeId: string | null) {
   });
 }
 
+export function useExchangeTradesHistory(
+  exchangeId: string | null,
+  limit?: number,
+) {
+  return useQuery({
+    queryKey: [...QUERY_KEY, exchangeId, 'trades-history', limit],
+    queryFn: () =>
+      exchangeId
+        ? exchangesApi.getTradesHistory(exchangeId, limit)
+        : Promise.reject(new Error('No exchange id')),
+    enabled: !!exchangeId,
+  });
+}
+
 export function useCreateExchange() {
   const queryClient = useQueryClient();
   return useMutation({

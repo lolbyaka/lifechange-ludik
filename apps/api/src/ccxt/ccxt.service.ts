@@ -4,33 +4,36 @@ import {
   BadRequestException,
   OnModuleInit,
   OnModuleDestroy,
+  Logger,
 } from '@nestjs/common';
+import * as ccxt from 'ccxt';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExchangeType } from '@prisma/client';
 
-// CCXT types (minimal for our usage)
-type CcxtExchange = {
-  fetchBalance(params?: object): Promise<Record<string, unknown>>;
-  fetchPositions(symbols?: string[], params?: object): Promise<unknown[]>;
-  fetchTicker(symbol: string, params?: object): Promise<unknown>;
-  fetchTickers(symbols?: string[], params?: object): Promise<Record<string, unknown>>;
-  fetchMarkets(params?: object): Promise<unknown[]>;
-  fetchOpenOrders(symbol?: string, since?: number, limit?: number, params?: object): Promise<unknown[]>;
-  fetchClosedOrders(symbol?: string, since?: number, limit?: number, params?: object): Promise<unknown[]>;
-  createOrder(
-    symbol: string,
-    type: string,
-    side: string,
-    amount: number,
-    price?: number,
-    params?: object,
-  ): Promise<unknown>;
-  cancelOrder(id: string, symbol?: string, params?: object): Promise<unknown>;
-  close(): Promise<void>;
-};
+// // CCXT types (minimal for our usage)
+// type CcxtExchange = {
+//   currency(symbol: string): { id: string };
+//   fetchBalance(params?: object): Promise<Record<string, unknown>>;
+//   fetchPositions(symbols?: string[], params?: object): Promise<unknown[]>;
+//   fetchTicker(symbol: string, params?: object): Promise<unknown>;
+//   fetchTickers(symbols?: string[], params?: object): Promise<Record<string, unknown>>;
+//   fetchMarkets(params?: object): Promise<unknown[]>;
+//   fetchOpenOrders(symbol?: string, since?: number, limit?: number, params?: object): Promise<unknown[]>;
+//   fetchClosedOrders(symbol?: string, since?: number, limit?: number, params?: object): Promise<unknown[]>;
+//   createOrder(
+//     symbol: string,
+//     type: string,
+//     side: string,
+//     amount: number,
+//     price?: number,
+//     params?: object,
+//   ): Promise<unknown>;
+//   cancelOrder(id: string, symbol?: string, params?: object): Promise<unknown>;
+//   close(): Promise<void>;
+// };
 
 interface CachedExchange {
-  client: CcxtExchange;
+  client: ccxt.Exchange;
   markets: unknown[];
   /** Timestamp when markets were last fetched (ms). */
   loadedAt?: number;
@@ -63,7 +66,7 @@ export class CcxtService implements OnModuleInit, OnModuleDestroy {
   private readonly cache = new Map<string, CachedExchange>();
   private readonly exchangeLocks = new Map<string, Promise<unknown>>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly logger: Logger) {}
 
   async onModuleInit(): Promise<void> {
     const exchangesWithBots = await this.prisma.exchange.findMany({
@@ -117,11 +120,11 @@ export class CcxtService implements OnModuleInit, OnModuleDestroy {
    * Caller is responsible for calling `exchange.close()` when done if needed (e.g. for WS).
    * For one-off REST calls we create and close inside each method.
    */
-  async getClient(exchangeId: string): Promise<CcxtExchange> {
+  async getClient(exchangeId: string): Promise<ccxt.Exchange> {
     return this.createClient(exchangeId);
   }
 
-  private async createClient(exchangeId: string): Promise<CcxtExchange> {
+  private async createClient(exchangeId: string): Promise<ccxt.Exchange> {
     const exchange = await this.prisma.exchange.findUnique({
       where: { id: exchangeId },
     });
@@ -171,12 +174,12 @@ export class CcxtService implements OnModuleInit, OnModuleDestroy {
       options.recvWindow = 60000;
       options['X-Window'] = 60000;
     }
-    const client = new ExchangeClass(options) as CcxtExchange;
+    const client = new ExchangeClass(options) as ccxt.Exchange;
 
     return client;
   }
 
-  private async getOrCreateClient(exchangeId: string): Promise<CcxtExchange> {
+  private async getOrCreateClient(exchangeId: string): Promise<ccxt.Exchange> {
     const entry = this.cache.get(exchangeId);
     if (entry) {
       return entry.client;
@@ -206,7 +209,7 @@ export class CcxtService implements OnModuleInit, OnModuleDestroy {
    */
   private async withClient<T>(
     exchangeId: string,
-    fn: (client: CcxtExchange) => Promise<T>,
+    fn: (client: ccxt.Exchange) => Promise<T>,
   ): Promise<T> {
     const client = await this.createClient(exchangeId);
     try {
@@ -220,7 +223,7 @@ export class CcxtService implements OnModuleInit, OnModuleDestroy {
 
   private async withPooledOrOneOff<T>(
     exchangeId: string,
-    fn: (client: CcxtExchange) => Promise<T>,
+    fn: (client: ccxt.Exchange) => Promise<T>,
   ): Promise<T> {
     if (this.cache.has(exchangeId)) {
       return this.withExchangeLock(exchangeId, async () => {
@@ -233,7 +236,17 @@ export class CcxtService implements OnModuleInit, OnModuleDestroy {
   }
 
   async fetchBalance(exchangeId: string, params?: object): Promise<Record<string, unknown>> {
-    return this.withPooledOrOneOff(exchangeId, (client) => client.fetchBalance(params));
+    
+    return this.withPooledOrOneOff(exchangeId, async(client) => {
+      this.logger.log('fetchBalance', exchangeId);
+      this.logger.log('params', params);
+      this.logger.log('client', client);
+      const balance = await client.fetchBalance({
+        ...params
+      });
+
+      return balance;
+    });
   }
 
   async fetchPositions(
@@ -243,6 +256,16 @@ export class CcxtService implements OnModuleInit, OnModuleDestroy {
   ): Promise<unknown[]> {
     return this.withPooledOrOneOff(exchangeId, (client) =>
       client.fetchPositions(symbols, params),
+    );
+  }
+
+  async fetchTrades(
+    exchangeId: string,
+    symbols?: string[],
+    params?: object,
+  ): Promise<unknown[]> {
+    return this.withPooledOrOneOff(exchangeId, (client) =>
+      client.fetchMyTrades(),
     );
   }
 
